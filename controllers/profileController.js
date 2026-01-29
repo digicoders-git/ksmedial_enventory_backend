@@ -14,16 +14,35 @@ const getProfile = async (req, res) => {
                 success: true,
                 user: {
                     id: shop._id,
-                    name: shop.ownerName,
-                    shopName: shop.shopName, // Useful alias
+                    name: shop.ownerName, // Owner Name
+                    shopName: shop.shopName, // Store Name
                     email: shop.email,
                     phone: shop.contactNumber,
-                    role: 'Administrator', // Hardcoded as Shop Owner
+                    role: 'Administrator',
                     location: `${shop.city}, ${shop.state}`,
                     address: shop.address,
+                    city: shop.city,
+                    state: shop.state,
+                    pincode: shop.pincode,
                     joinDate: shop.createdAt,
-                    bio: shop.bio || 'No bio available',
-                    avatar: shop.image || 'https://ui-avatars.com/api/?name=' + shop.ownerName + '&background=random'
+                    bio: shop.bio || '',
+                    tagline: shop.tagline || '',
+                    website: shop.website || '',
+                    gstin: shop.gstNumber || '',
+                    dlNo: shop.licenseNumber || '',
+                    avatar: shop.image || 'https://ui-avatars.com/api/?name=' + shop.ownerName + '&background=random',
+                    inventorySettings: shop.inventorySettings,
+                    appSettings: shop.appSettings || {
+                        language: 'en-US',
+                        currency: 'INR',
+                        dateFormat: 'DD-MM-YYYY',
+                        enableSound: true,
+                        emailAlerts: true,
+                        pushNotifications: true,
+                        printerType: 'thermal-3inch',
+                        autoPrint: true,
+                        scannerMode: 'keyboard'
+                    }
                 }
             });
         } else {
@@ -42,26 +61,66 @@ const updateProfile = async (req, res) => {
         const shop = await Shop.findById(req.shop._id);
 
         if (shop) {
-            shop.ownerName = req.body.name || shop.ownerName;
+            shop.ownerName = req.body.name || shop.ownerName; // Usually Owner Name UI field maps to this
+            shop.shopName = req.body.shopName || shop.shopName;
             shop.email = req.body.email || shop.email;
             shop.contactNumber = req.body.phone || shop.contactNumber;
             shop.bio = req.body.bio || shop.bio;
-            // Address updates if sent
-            // shop.address = req.body.address || shop.address; 
+            
+            // Branding
+            shop.tagline = req.body.tagline || shop.tagline;
+            shop.website = req.body.website || shop.website;
+
+            // Address & Location
+            shop.address = req.body.address || shop.address;
+            shop.city = req.body.city || shop.city;
+            shop.state = req.body.state || shop.state;
+            shop.pincode = req.body.pincode || shop.pincode;
+
+            // Legal
+            shop.gstNumber = req.body.gstin || shop.gstNumber;
+            shop.licenseNumber = req.body.dlNo || shop.licenseNumber;
+
+            // Inventory Settings
+            if (req.body.inventorySettings) {
+                shop.inventorySettings = {
+                    ...shop.inventorySettings,
+                    ...req.body.inventorySettings
+                };
+            }
+
+            // App Settings
+            if (req.body.appSettings) {
+                shop.appSettings = {
+                    ...shop.appSettings,
+                    ...req.body.appSettings
+                };
+            }
 
             const updatedShop = await shop.save();
-            logActivity(req, 'Updated profile', 'User updated profile details', 'Profile');
+            logActivity(req, 'Updated profile', 'User updated settings', 'Profile');
 
             res.json({
                 success: true,
                 user: {
                     id: updatedShop._id,
                     name: updatedShop.ownerName,
+                    shopName: updatedShop.shopName,
                     email: updatedShop.email,
                     phone: updatedShop.contactNumber,
                     bio: updatedShop.bio,
+                    tagline: updatedShop.tagline,
+                    website: updatedShop.website,
+                    gstin: updatedShop.gstNumber,
+                    dlNo: updatedShop.licenseNumber,
                     avatar: updatedShop.image,
-                    location: `${updatedShop.city}, ${updatedShop.state}`
+                    address: updatedShop.address,
+                    city: updatedShop.city,
+                    state: updatedShop.state,
+                    pincode: updatedShop.pincode,
+                    location: `${updatedShop.city}, ${updatedShop.state}`,
+                    inventorySettings: updatedShop.inventorySettings,
+                    appSettings: updatedShop.appSettings
                 },
                 message: 'Profile updated successfully'
             });

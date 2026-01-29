@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
     getDoctors,
+    getDoctorById,
     createDoctor,
     updateDoctor,
     deleteDoctor
@@ -15,6 +16,7 @@ router.route('/')
     .post(createDoctor);
 
 router.route('/:id')
+    .get(getDoctorById)
     .put(updateDoctor)
     .delete(deleteDoctor);
 

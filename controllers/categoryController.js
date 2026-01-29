@@ -10,7 +10,10 @@ const getCategories = async (req, res) => {
         
         // Count products for each category
         const categoriesWithCount = await Promise.all(categories.map(async (cat) => {
-            const count = await Product.countDocuments({ shopId: req.shop._id, category: cat.name });
+            const count = await Product.countDocuments({ 
+                shopId: req.shop._id, 
+                category: { $regex: new RegExp(`^${cat.name}$`, 'i') } 
+            });
             return {
                 ...cat._doc,
                 count

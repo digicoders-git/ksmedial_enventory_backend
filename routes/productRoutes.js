@@ -6,15 +6,23 @@ const {
     createProduct, 
     updateProduct, 
     deleteProduct,
-    adjustStock
+    adjustStock,
+    getInventoryLogs,
+    getInventoryReport
 } = require('../controllers/productController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
 
+router.route('/report')
+    .get(getInventoryReport);
+
 router.route('/')
     .get(getProducts)
     .post(createProduct);
+
+router.route('/logs')
+    .get(getInventoryLogs);
 
 router.route('/:id/adjust')
     .put(adjustStock);

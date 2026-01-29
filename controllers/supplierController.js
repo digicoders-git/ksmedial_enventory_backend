@@ -5,7 +5,15 @@ const Supplier = require('../models/Supplier');
 // @access  Private
 const getSuppliers = async (req, res) => {
     try {
-        const suppliers = await Supplier.find({ shopId: req.shop._id });
+        const keyword = req.query.keyword ? {
+            $or: [
+                { name: { $regex: req.query.keyword, $options: 'i' } },
+                { contactPerson: { $regex: req.query.keyword, $options: 'i' } },
+                { city: { $regex: req.query.keyword, $options: 'i' } }
+            ]
+        } : {};
+
+        const suppliers = await Supplier.find({ shopId: req.shop._id, ...keyword });
         res.json({ success: true, suppliers });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -17,7 +25,7 @@ const getSuppliers = async (req, res) => {
 // @access  Private
 const createSupplier = async (req, res) => {
     try {
-        const { name, contactPerson, phone, email, address, gstNumber } = req.body;
+        const { name, contactPerson, phone, email, address, city, gstNumber, drugLicenseNumber, rating, balance, status } = req.body;
         
         const supplier = await Supplier.create({
             name,
@@ -25,7 +33,12 @@ const createSupplier = async (req, res) => {
             phone,
             email,
             address,
+            city,
             gstNumber,
+            drugLicenseNumber,
+            rating: rating || 0,
+            balance: balance || 0,
+            status: status || 'Active',
             shopId: req.shop._id
         });
 
@@ -66,7 +79,7 @@ const deleteSupplier = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Supplier not found' });
         }
 
-        await supplier.remove();
+        await Supplier.deleteOne({ _id: req.params.id });
         res.json({ success: true, message: 'Supplier removed' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

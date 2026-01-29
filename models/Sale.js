@@ -10,10 +10,16 @@ const saleSchema = new mongoose.Schema(
       name: { type: String },
       quantity: { type: Number, required: true },
       price: { type: Number, required: true },
+      tax: { type: Number, default: 0 },
+      discount: { type: Number, default: 0 },
       subtotal: { type: Number, required: true }
     }],
-    totalAmount: { type: Number, required: true },
-    paymentMethod: { type: String, enum: ['Cash', 'Online', 'Card'], default: 'Cash' },
+     totalAmount: { type: Number, required: true },
+     subTotal: { type: Number, default: 0 },
+     taxAmount: { type: Number, default: 0 },
+     discountAmount: { type: Number, default: 0 },
+     paymentMethod: { type: String, enum: ['Cash', 'Online', 'Card', 'UPI', 'Credit'], default: 'Cash' },
+    status: { type: String, enum: ['Paid', 'Pending', 'Cancelled', 'Returned'], default: 'Paid' },
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
   },
   { timestamps: true }

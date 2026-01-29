@@ -18,6 +18,27 @@ const shopSchema = new mongoose.Schema(
     bio: { type: String },
     image: { type: String },
     twoFactorEnabled: { type: Boolean, default: false },
+    tagline: { type: String },
+    website: { type: String },
+    inventorySettings: {
+      lowStockThreshold: { type: Number, default: 10 },
+      expiryAlertDays: { type: Number, default: 60 },
+      enableNegativeStock: { type: Boolean, default: false },
+      barcodePrefix: { type: String, default: 'MED' },
+      printLabels: { type: Boolean, default: true }
+    },
+    appSettings: {
+      language: { type: String, default: 'en-US' },
+      currency: { type: String, default: 'INR' },
+      dateFormat: { type: String, default: 'DD-MM-YYYY' },
+      enableSound: { type: Boolean, default: true },
+      emailAlerts: { type: Boolean, default: true },
+      pushNotifications: { type: Boolean, default: true },
+      printerType: { type: String, default: 'thermal-3inch' },
+      autoPrint: { type: Boolean, default: true },
+      scannerMode: { type: String, default: 'keyboard' }
+    }
+
   },
   { timestamps: true }
 );

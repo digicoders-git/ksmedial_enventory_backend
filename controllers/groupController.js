@@ -10,7 +10,10 @@ const getGroups = async (req, res) => {
         
         // Count products for each group
         const groupsWithCount = await Promise.all(groups.map(async (grp) => {
-            const count = await Product.countDocuments({ shopId: req.shop._id, category: grp.name });
+            const count = await Product.countDocuments({ 
+                shopId: req.shop._id, 
+                category: { $regex: new RegExp(`^${grp.name}$`, 'i') } 
+            });
             return {
                 ...grp._doc,
                 count

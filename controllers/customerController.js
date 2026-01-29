@@ -1,12 +1,33 @@
 const Customer = require('../models/Customer');
 
-// @desc    Get all customers
+// @desc    Get all customers with search and pagination
 // @route   GET /api/customers
 // @access  Private
 const getCustomers = async (req, res) => {
     try {
-        const customers = await Customer.find({ shopId: req.shop._id });
-        res.json({ success: true, customers });
+        const pageSize = Number(req.query.pageSize) || 10;
+        const page = Number(req.query.pageNumber) || 1;
+        const keyword = req.query.keyword ? {
+            $or: [
+                { name: { $regex: req.query.keyword, $options: 'i' } },
+                { phone: { $regex: req.query.keyword, $options: 'i' } },
+                { address: { $regex: req.query.keyword, $options: 'i' } } // Assuming address/location is searchable
+            ]
+        } : {};
+
+        const count = await Customer.countDocuments({ ...keyword, shopId: req.shop._id });
+        const customers = await Customer.find({ ...keyword, shopId: req.shop._id })
+            .sort({ createdAt: -1 })
+            .limit(pageSize)
+            .skip(pageSize * (page - 1));
+
+        res.json({
+            success: true, 
+            customers,
+            page,
+            pages: Math.ceil(count / pageSize),
+            total: count
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -17,13 +38,14 @@ const getCustomers = async (req, res) => {
 // @access  Private
 const createCustomer = async (req, res) => {
     try {
-        const { name, phone, email, address } = req.body;
+        const { name, phone, email, address, pendingAmount } = req.body;
         
         const customer = await Customer.create({
             name,
             phone,
             email,
             address,
+            pendingAmount: pendingAmount || 0,
             shopId: req.shop._id
         });
 
@@ -64,7 +86,7 @@ const deleteCustomer = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Customer not found' });
         }
 
-        await customer.remove();
+        await customer.deleteOne();
         res.json({ success: true, message: 'Customer removed' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

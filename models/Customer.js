@@ -9,6 +9,7 @@ const customerSchema = new mongoose.Schema(
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
     totalOrders: { type: Number, default: 0 },
     totalSpent: { type: Number, default: 0 },
+    pendingAmount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

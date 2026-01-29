@@ -47,9 +47,9 @@ const createPurchase = async (req, res) => {
         for (const item of items) {
              const product = await Product.findById(item.productId);
              if (product) {
-                 product.stock = (product.stock || 0) + Number(item.quantity);
+                 product.quantity = (product.quantity || 0) + Number(item.quantity); // Fix: use quantity, not stock
                  // Optional: Update buyPrice/sellPrice if changed?
-                 // product.buyPrice = item.purchasePrice; 
+                 // product.purchasePrice = item.purchasePrice; 
                  await product.save();
              }
         }
@@ -65,21 +65,59 @@ const createPurchase = async (req, res) => {
 // @access  Private
 const getPurchases = async (req, res) => {
     try {
-        const pageSize = 10;
+        const pageSize = Number(req.query.pageSize) || 10;
         const page = Number(req.query.pageNumber) || 1;
         
-        const keyword = req.query.keyword ? {
-            invoiceNumber: { $regex: req.query.keyword, $options: 'i' }
-        } : {};
+        const query = { shopId: req.shop._id };
+        
+        if (req.query.keyword) {
+            query.invoiceNumber = { $regex: req.query.keyword, $options: 'i' };
+        }
+        
+        if (req.query.supplierId) {
+            query.supplierId = req.query.supplierId;
+        }
 
-        const count = await Purchase.countDocuments({ ...keyword, shopId: req.shop._id });
-        const purchases = await Purchase.find({ ...keyword, shopId: req.shop._id })
-            .populate('supplierId', 'name')
+        if (req.query.status && req.query.status !== 'All') {
+            query.status = req.query.status;
+        }
+
+        // Date filtering
+        if (req.query.startDate || req.query.endDate) {
+            query.purchaseDate = {};
+            if (req.query.startDate) query.purchaseDate.$gte = new Date(req.query.startDate);
+            if (req.query.endDate) query.purchaseDate.$lte = new Date(req.query.endDate);
+        }
+
+        const count = await Purchase.countDocuments(query);
+        const purchases = await Purchase.find(query)
+            .populate('supplierId', 'name gstNumber address phone')
             .sort({ createdAt: -1 })
             .limit(pageSize)
             .skip(pageSize * (page - 1));
 
-        res.json({ success: true, purchases, page, pages: Math.ceil(count / pageSize), total: count });
+        // Calculate Stats for all time (for the shop)
+        const allPurchases = await Purchase.find({ shopId: req.shop._id });
+        const totalPurchasesAmount = allPurchases
+            .filter(p => p.status === 'Received')
+            .reduce((acc, curr) => acc + curr.grandTotal, 0);
+        
+        const unpaidInvoices = allPurchases.filter(p => p.paymentStatus === 'Pending');
+        const pendingAmount = unpaidInvoices.reduce((acc, curr) => acc + curr.grandTotal, 0);
+
+        res.json({ 
+            success: true, 
+            purchases, 
+            page, 
+            pages: Math.ceil(count / pageSize), 
+            total: count,
+            stats: {
+                totalPurchasesAmount,
+                pendingAmount,
+                unpaidCount: unpaidInvoices.length,
+                totalInvoices: allPurchases.length
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -90,8 +128,8 @@ const getPurchases = async (req, res) => {
 // @access  Private
 const getPurchaseById = async (req, res) => {
     try {
-        const purchase = await Purchase.findOne({ _id: req.params.id, shopId: req.shop._id })
-            .populate('supplierId', 'name email phone')
+const purchase = await Purchase.findOne({ _id: req.params.id, shopId: req.shop._id })
+            .populate('supplierId', 'name email phone gstNumber address')
             .populate('items.productId', 'name sku');
 
         if (purchase) {

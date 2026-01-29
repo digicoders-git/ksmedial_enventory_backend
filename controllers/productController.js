@@ -1,11 +1,16 @@
 const Product = require('../models/Product');
+const InventoryLog = require('../models/InventoryLog');
 
 // @desc    Get all products for a shop
 // @route   GET /api/products
 // @access  Private
 const getProducts = async (req, res) => {
     try {
-        const products = await Product.find({ shopId: req.shop._id }).sort({ createdAt: -1 });
+        const query = { shopId: req.shop._id };
+        if (req.query.category) {
+            query.category = { $regex: new RegExp(`^${req.query.category}$`, 'i') }; // Case-insensitive match
+        }
+        const products = await Product.find(query).sort({ createdAt: -1 });
         res.json({ success: true, products });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -32,18 +37,28 @@ const getProductById = async (req, res) => {
 // @access  Private
 const createProduct = async (req, res) => {
     try {
-        const { name, batchNumber, expiryDate, purchasePrice, sellingPrice, quantity, category, sku, reorderLevel } = req.body;
+        const { 
+            name, genericName, company, batchNumber, expiryDate, 
+            purchasePrice, sellingPrice, quantity, category, sku, 
+            reorderLevel, packing, hsnCode, tax, unit, description,
+            isPrescriptionRequired, rackLocation, image, brand, status
+        } = req.body;
+
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
 
         const product = await Product.create({
-            name,
-            batchNumber,
-            expiryDate,
-            purchasePrice,
-            sellingPrice,
-            quantity,
+            name, genericName, company,
+            batchNumber: batchNumber || 'N/A', 
+            expiryDate: expiryDate || 'N/A',
+            purchasePrice: purchasePrice || 0,
+            sellingPrice: sellingPrice || 0,
+            quantity: quantity || 0,
             category,
             sku: sku || `SKU-${Date.now()}`,
-            reorderLevel,
+            slug: slug,
+            reorderLevel: reorderLevel || 20,
+            packing, hsnCode, tax, unit, description,
+            isPrescriptionRequired, rackLocation, image, brand, status,
             shopId: req.shop._id
         });
 
@@ -56,6 +71,7 @@ const createProduct = async (req, res) => {
 // @desc    Update a product
 // @route   PUT /api/products/:id
 // @access  Private
+
 const updateProduct = async (req, res) => {
     try {
         let product = await Product.findOne({ _id: req.params.id, shopId: req.shop._id });
@@ -98,7 +114,7 @@ const deleteProduct = async (req, res) => {
 // @access  Private
 const adjustStock = async (req, res) => {
     try {
-        const { type, quantity, reason } = req.body;
+        const { type, quantity, reason, note } = req.body;
         const product = await Product.findOne({ _id: req.params.id, shopId: req.shop._id });
 
         if (!product) {
@@ -114,11 +130,138 @@ const adjustStock = async (req, res) => {
 
         await product.save();
 
-        // Optional: Log transaction in a separate model
-        // await Transaction.create({ ... })
+        // Log transaction
+        const log = await InventoryLog.create({
+            type: type === 'add' ? 'IN' : 'OUT',
+            reason,
+            quantity: qtyChange,
+            productId: product._id,
+            productName: product.name,
+            batchNumber: product.batchNumber,
+            note,
+            shopId: req.shop._id,
+            date: new Date()
+        });
 
-        res.json({ success: true, product });
+        res.json({ success: true, product, log });
     } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Get inventory logs
+// @route   GET /api/products/logs
+// @access  Private
+const getInventoryLogs = async (req, res) => {
+    try {
+        const logs = await InventoryLog.find({ shopId: req.shop._id })
+            .sort({ date: -1 })
+            .limit(50);
+        res.json({ success: true, logs });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Get inventory report statistics
+// @route   GET /api/products/report
+// @access  Private
+const getInventoryReport = async (req, res) => {
+    try {
+        const products = await Product.find({ shopId: req.shop._id });
+
+        // 1. Overview Stats
+        const totalItems = products.length;
+        const totalValue = products.reduce((acc, curr) => acc + (curr.quantity * curr.purchasePrice), 0);
+        
+        const lowStockItems = [];
+        const expiryItems = [];
+        const categoryMap = {};
+
+        const today = new Date();
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+        products.forEach(product => {
+            // Low Stock Check
+            const reorderLevel = product.reorderLevel || 10;
+            if (product.quantity <= reorderLevel) {
+                lowStockItems.push({
+                    name: product.name,
+                    stock: product.quantity,
+                    min: reorderLevel,
+                    supplier: product.company || 'N/A' // Using company as supplier proxy
+                });
+            }
+
+            // Expiry Check
+            if (product.expiryDate && product.expiryDate !== 'N/A') {
+                const expDate = new Date(product.expiryDate);
+                // Check if valid date
+                if (!isNaN(expDate.getTime())) {
+                    if (expDate <= thirtyDaysFromNow && expDate >= today) { // Expiring soon but not already expired? Or include expired? Usually expiring soon.
+                        // Let's include expired items too as critical
+                         expiryItems.push({
+                            name: product.name,
+                            batch: product.batchNumber,
+                            expiry: product.expiryDate,
+                            stock: product.quantity,
+                            dateObj: expDate
+                        });
+                    } else if (expDate < today) {
+                         // Already Expired
+                         /* We could include these or separate them. For now adding to expiry list if logic treats them as 'alert' */
+                         // Actually user request is "Expiring Soon (30 Days)", usually implies future.
+                         // But expired items are also critical. Let's stick to <= 30 days (past + near future)
+                         expiryItems.push({
+                            name: product.name,
+                            batch: product.batchNumber,
+                            expiry: product.expiryDate,
+                            stock: product.quantity,
+                            dateObj: expDate
+                        });
+                    }
+                }
+            }
+
+            // Category Breakdown
+            const catName = product.category || 'Uncategorized';
+            if (!categoryMap[catName]) {
+                categoryMap[catName] = { name: catName, stock: 0, value: 0 };
+            }
+            categoryMap[catName].stock += product.quantity;
+            categoryMap[catName].value += (product.quantity * product.purchasePrice);
+        });
+
+        // 2. Format Category Data
+        const categoryData = Object.values(categoryMap).map(cat => ({
+            ...cat,
+            percent: totalValue > 0 ? Math.round((cat.value / totalValue) * 100) : 0
+        })).sort((a, b) => b.value - a.value);
+
+        // 3. Sort Alerts
+        lowStockItems.sort((a, b) => a.stock - b.stock); // Ascending stock (most critical first)
+        expiryItems.sort((a, b) => a.dateObj - b.dateObj); // Nearest expiry first
+
+        // 4. Counts
+        const lowStockCount = lowStockItems.length;
+        const nearExpiryCount = expiryItems.length;
+
+        res.json({
+            success: true,
+            stats: {
+                totalItems,
+                totalValue,
+                lowStock: lowStockCount,
+                nearExpiry: nearExpiryCount
+            },
+            categoryData,
+            lowStockItems: lowStockItems.slice(0, 50), // Limit mainly for display if needed
+            expiryItems: expiryItems.slice(0, 50)
+        });
+
+    } catch (error) {
+        console.error("Report Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -129,5 +272,7 @@ module.exports = {
     createProduct,
     updateProduct,
     deleteProduct,
-    adjustStock
+    adjustStock,
+    getInventoryLogs,
+    getInventoryReport
 };
