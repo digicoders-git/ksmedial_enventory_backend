@@ -46,9 +46,23 @@ const createSaleReturn = async (req, res) => {
             });
         }
 
-        // Update sale status if it was a full return or just mark as partially returned
-        // For simplicity, let's mark it as 'Returned' if any return is processed
-        sale.status = 'Returned';
+        // Smarter Sale status update
+        sale.returnedAmount = (sale.returnedAmount || 0) + totalAmount;
+        
+        // Calculate total original qty
+        const totalOriginalQty = sale.items.reduce((acc, i) => acc + i.quantity, 0);
+        // Calculate total previously returned qty + current return qty
+        const allReturnsForSale = await SaleReturn.find({ saleId: sale._id });
+        const totalReturnedQty = allReturnsForSale.reduce((acc, r) => 
+            acc + r.items.reduce((itemAcc, item) => itemAcc + item.quantity, 0), 0
+        );
+
+        if (totalReturnedQty >= totalOriginalQty) {
+            sale.status = 'Returned';
+        } else {
+            sale.status = 'Partial';
+        }
+        
         await sale.save();
 
         res.status(201).json({ success: true, saleReturn: createdReturn });
@@ -118,7 +132,7 @@ const getSaleReturnById = async (req, res) => {
             .populate('items.productId');
         
         if (saleReturn && saleReturn.shopId.toString() === req.shop._id.toString()) {
-            res.json({ success: true, saleReturn });
+            res.json({ success: true, saleReturn, shop: req.shop });
         } else {
             res.status(404).json({ success: false, message: 'Return not found' });
         }

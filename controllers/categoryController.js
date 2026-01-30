@@ -32,10 +32,13 @@ const getCategories = async (req, res) => {
 const createCategory = async (req, res) => {
     try {
         const { name, description, color } = req.body;
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+        
         const category = await Category.create({
             name,
             description,
             color,
+            slug: slug,
             shopId: req.shop._id
         });
         res.status(201).json({ success: true, category });

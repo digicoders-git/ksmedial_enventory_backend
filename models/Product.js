@@ -23,6 +23,7 @@ const productSchema = new mongoose.Schema(
     rackLocation: { type: String },
     image: { type: String },
     brand: { type: String },
+    group: { type: String },
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
     status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
   },

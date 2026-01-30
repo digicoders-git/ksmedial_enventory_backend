@@ -32,9 +32,12 @@ const getGroups = async (req, res) => {
 const createGroup = async (req, res) => {
     try {
         const { name, description } = req.body;
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+
         const group = await Group.create({
             name,
             description,
+            slug: slug,
             shopId: req.shop._id
         });
         res.status(201).json({ success: true, group });

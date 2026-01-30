@@ -2,6 +2,8 @@ const Sale = require('../models/Sale');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
 
+const mongoose = require('mongoose');
+
 // @desc    Create new sale
 // @route   POST /api/sales
 // @access  Private
@@ -30,10 +32,14 @@ const createSale = async (req, res) => {
                  customerName = customer.name;
             } else if (typeof customer === 'string') {
                 // Check if it's an ID
-                const existing = await Customer.findById(customer);
-                if(existing) {
-                    customerId = existing._id;
-                    customerName = existing.name;
+                if (mongoose.Types.ObjectId.isValid(customer)) {
+                    const existing = await Customer.findById(customer);
+                    if(existing) {
+                        customerId = existing._id;
+                        customerName = existing.name;
+                    } else {
+                        customerName = customer;
+                    }
                 } else {
                     // Treat as name for walk-in
                     customerName = customer;
@@ -219,6 +225,111 @@ const deleteSale = async (req, res) => {
     }
 };
 
+// @desc    Update existing sale
+// @route   PUT /api/sales/:id
+// @access  Private
+const updateSale = async (req, res) => {
+    try {
+        const saleId = req.params.id;
+        const {
+            customer,
+            items,
+            subTotal,
+            tax,
+            discount,
+            totalAmount,
+            paymentMethod,
+            amountPaid,
+            status
+        } = req.body;
+
+        const sale = await Sale.findOne({ _id: saleId, shopId: req.shop._id });
+        if (!sale) {
+            return res.status(404).json({ success: false, message: 'Sale record not found' });
+        }
+
+        // 1. Restore previous stock levels
+        for (const item of sale.items) {
+            const product = await Product.findById(item.productId);
+            if (product) {
+                product.quantity += item.quantity;
+                await product.save();
+            }
+        }
+
+        // 2. Process new items and check updated stock
+        for (const item of items) {
+            const product = await Product.findById(item.productId);
+            if (!product) {
+                return res.status(404).json({ success: false, message: `Product not found: ${item.name}` });
+            }
+            if (product.quantity < item.quantity) {
+                // To maintain consistency, we should rollback the stock restoration if this fails, 
+                // but since we haven't saved the sale yet, we MUST restore it back.
+                // However, for simplicity in this flow, we assume validation happens.
+                // Re-rolling back restored stock to previous state before erroring
+                for (const prevItem of sale.items) {
+                    const p = await Product.findById(prevItem.productId);
+                    if (p) {
+                        p.quantity -= prevItem.quantity;
+                        await p.save();
+                    }
+                }
+                return res.status(400).json({ success: false, message: `Insufficient stock for ${product.name}. Available: ${product.quantity}` });
+            }
+        }
+
+        // 3. Update Handle Customer
+        let customerId = sale.customerId;
+        let customerName = sale.customerName;
+
+        if (customer) {
+            if (customer._id) {
+                 customerId = customer._id;
+                 customerName = customer.name;
+            } else if (typeof customer === 'string') {
+                const existing = await Customer.findById(customer);
+                if(existing) {
+                    customerId = existing._id;
+                    customerName = existing.name;
+                } else {
+                    customerName = customer;
+                }
+            } else if (customer.name) {
+                 customerName = customer.name;
+            }
+        }
+
+        // 4. Update Sale Record
+        sale.customerId = customerId;
+        sale.customerName = customerName;
+        sale.items = items;
+        sale.subTotal = subTotal;
+        sale.taxAmount = tax || 0;
+        sale.discountAmount = discount || 0;
+        sale.totalAmount = totalAmount;
+        sale.paymentMethod = paymentMethod;
+        sale.status = status || sale.status;
+        sale.amountPaid = amountPaid || totalAmount;
+
+        const updatedSale = await sale.save();
+
+        // 5. Deduct new stock levels
+        for (const item of items) {
+            const product = await Product.findById(item.productId);
+            if (product) {
+                product.quantity -= item.quantity;
+                await product.save();
+            }
+        }
+
+        res.json({ success: true, sale: updatedSale });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // @desc    Clear all sales
 // @route   DELETE /api/sales
 // @access  Private
@@ -268,7 +379,7 @@ const getSalesReport = async (req, res) => {
         const sales = await Sale.find(query).sort({ createdAt: -1 });
 
         // 1. Overview Stats
-        const totalSales = sales.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
+        const totalSales = sales.reduce((acc, curr) => acc + ((curr.totalAmount || 0) - (curr.returnedAmount || 0)), 0);
         const totalOrders = sales.length;
         const avgOrderValue = totalOrders > 0 ? Math.round(totalSales / totalOrders) : 0;
         
@@ -383,7 +494,7 @@ const getProfitReport = async (req, res) => {
         let categoryStats = {};
 
         sales.forEach(sale => {
-            revenue += sale.totalAmount || 0;
+            revenue += (sale.totalAmount || 0) - (sale.returnedAmount || 0);
 
             sale.items.forEach(item => {
                 const product = item.productId;
@@ -456,7 +567,7 @@ const getGroupReport = async (req, res) => {
                 $group: { 
                     _id: "$category", 
                     totalItems: { $sum: 1 }, 
-                    stockValue: { $sum: { $multiply: ["$stock", "$purchasePrice"] } } 
+                    stockValue: { $sum: { $multiply: ["$quantity", "$purchasePrice"] } } 
                 } 
             }
         ]);
@@ -519,5 +630,6 @@ module.exports = {
     clearAllSales,
     getSalesReport,
     getProfitReport,
-    getGroupReport
+    getGroupReport,
+    updateSale
 };

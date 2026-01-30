@@ -8,7 +8,8 @@ const {
     clearAllSales,
     getSalesReport,
     getProfitReport,
-    getGroupReport
+    getGroupReport,
+    updateSale
 } = require('../controllers/salesController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -30,6 +31,7 @@ router.route('/')
 
 router.route('/:id')
     .get(getSaleById)
+    .put(updateSale)
     .delete(deleteSale);
 
 module.exports = router;
