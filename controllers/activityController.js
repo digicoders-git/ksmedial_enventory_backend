@@ -30,7 +30,9 @@ const getActivities = async (req, res) => {
 // @access  Private
 const logActivity = async (req, action, details, type, userOverride) => {
     try {
-        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '192.168.1.1';
+        const ip = (req && req.headers ? req.headers['x-forwarded-for'] : null) || 
+                   (req && req.socket ? req.socket.remoteAddress : null) || 
+                   '127.0.0.1';
         
         await ActivityLog.create({
             shopId: req.shop._id,
