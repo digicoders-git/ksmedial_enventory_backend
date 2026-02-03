@@ -77,7 +77,7 @@ const deleteGroup = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Group not found' });
         }
 
-        await group.remove();
+        await group.deleteOne();
         res.json({ success: true, message: 'Group removed' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

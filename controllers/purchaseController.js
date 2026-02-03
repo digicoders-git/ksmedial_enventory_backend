@@ -17,14 +17,74 @@ const createPurchase = async (req, res) => {
             paymentStatus,
             paymentMethod,
             notes,
-            invoiceNumber
+            invoiceNumber,
+            invoiceDate,
+            invoiceSummary,
+            taxBreakup
         } = req.body;
 
         // Verify supplier
         const supplier = await Supplier.findById(supplierId);
         if(!supplier) {
-             // allow creating without supplier? for now enforce it or check setup
-             // If supplierId is invalid it might fail
+            return res.status(404).json({ success: false, message: 'Supplier not found' });
+        }
+
+        // Auto-calculate invoice summary if not provided
+        let calculatedInvoiceSummary = invoiceSummary || {};
+        let calculatedTaxBreakup = taxBreakup || { gst5: {}, gst12: {}, gst18: {}, gst28: {} };
+        
+        if (!invoiceSummary || !taxBreakup) {
+            let taxableAmount = 0;
+            let totalTax = 0;
+            let mrpValue = 0;
+            
+            // Initialize tax breakup
+            const breakup = {
+                gst5: { taxable: 0, tax: 0 },
+                gst12: { taxable: 0, tax: 0 },
+                gst18: { taxable: 0, tax: 0 },
+                gst28: { taxable: 0, tax: 0 }
+            };
+            
+            items.forEach(item => {
+                const itemTaxable = item.baseRate ? (item.baseRate * item.receivedQty) : item.amount;
+                const itemTax = (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0);
+                const totalGst = itemTax;
+                
+                taxableAmount += itemTaxable;
+                totalTax += (itemTaxable * totalGst / 100);
+                mrpValue += (item.mrp || 0) * item.receivedQty;
+                
+                // Categorize by GST rate
+                if (totalGst === 5) {
+                    breakup.gst5.taxable += itemTaxable;
+                    breakup.gst5.tax += (itemTaxable * 5 / 100);
+                } else if (totalGst === 12) {
+                    breakup.gst12.taxable += itemTaxable;
+                    breakup.gst12.tax += (itemTaxable * 12 / 100);
+                } else if (totalGst === 18) {
+                    breakup.gst18.taxable += itemTaxable;
+                    breakup.gst18.tax += (itemTaxable * 18 / 100);
+                } else if (totalGst === 28) {
+                    breakup.gst28.taxable += itemTaxable;
+                    breakup.gst28.tax += (itemTaxable * 28 / 100);
+                }
+            });
+            
+            const amountAfterGst = taxableAmount + totalTax;
+            const roundAmount = Math.round(amountAfterGst) - amountAfterGst;
+            
+            calculatedInvoiceSummary = {
+                taxableAmount: parseFloat(taxableAmount.toFixed(2)),
+                tcsAmount: 0,
+                mrpValue: parseFloat(mrpValue.toFixed(2)),
+                netAmount: parseFloat(taxableAmount.toFixed(2)),
+                amountAfterGst: parseFloat(amountAfterGst.toFixed(2)),
+                roundAmount: parseFloat(roundAmount.toFixed(2)),
+                invoiceAmount: Math.round(amountAfterGst)
+            };
+            
+            calculatedTaxBreakup = breakup;
         }
 
         const purchase = new Purchase({
@@ -38,18 +98,26 @@ const createPurchase = async (req, res) => {
             paymentMethod,
             notes,
             invoiceNumber,
+            invoiceDate: invoiceDate || new Date(),
+            invoiceSummary: calculatedInvoiceSummary,
+            taxBreakup: calculatedTaxBreakup,
             shopId: req.shop._id
         });
 
         const createdPurchase = await purchase.save();
 
-        // Update Product Stock and Cost Price?
+        // Update Product Stock
         for (const item of items) {
              const product = await Product.findById(item.productId);
              if (product) {
-                 product.quantity = (product.quantity || 0) + Number(item.quantity); // Fix: use quantity, not stock
-                 // Optional: Update buyPrice/sellPrice if changed?
-                 // product.purchasePrice = item.purchasePrice; 
+                 const totalQty = (item.receivedQty || 0) + (item.physicalFreeQty || 0) + (item.schemeFreeQty || 0);
+                 product.quantity = (product.quantity || 0) + Number(totalQty);
+                 
+                 // Update pricing if provided
+                 if (item.purchasePrice) product.purchasePrice = item.purchasePrice;
+                 if (item.sellingPrice) product.sellingPrice = item.sellingPrice;
+                 if (item.mrp) product.mrp = item.mrp;
+                 
                  await product.save();
              }
         }
