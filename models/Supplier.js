@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const supplierSchema = new mongoose.Schema(
   {
+    supplierCode: { type: String, unique: true, sparse: true },
     name: { type: String, required: true },
     contactPerson: { type: String },
     phone: { type: String, required: true },

@@ -27,7 +27,26 @@ const createSupplier = async (req, res) => {
     try {
         const { name, contactPerson, phone, email, address, city, gstNumber, drugLicenseNumber, rating, balance, status } = req.body;
         
+        // Auto-generate Supplier Code (SKU ID)
+        const currentYear = new Date().getFullYear();
+        const prefix = `SUP-${currentYear}-`;
+        
+        // Find the last supplier code for this year
+        const lastSupplier = await Supplier.findOne({
+            shopId: req.shop._id,
+            supplierCode: { $regex: `^${prefix}` }
+        }).sort({ supplierCode: -1 });
+        
+        let nextNumber = 1;
+        if (lastSupplier && lastSupplier.supplierCode) {
+            const lastNumber = parseInt(lastSupplier.supplierCode.split('-').pop());
+            nextNumber = lastNumber + 1;
+        }
+        
+        const supplierCode = `${prefix}${String(nextNumber).padStart(4, '0')}`;
+        
         const supplier = await Supplier.create({
+            supplierCode,
             name,
             contactPerson,
             phone,
