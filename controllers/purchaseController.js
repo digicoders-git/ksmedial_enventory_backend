@@ -29,6 +29,27 @@ const createPurchase = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Supplier not found' });
         }
 
+        // Auto-generate Invoice Number if not provided
+        let finalInvoiceNumber = invoiceNumber;
+        if (!finalInvoiceNumber) {
+            const currentYear = new Date().getFullYear();
+            const prefix = `GRN-${currentYear}-`;
+            
+            // Find the last invoice number for this year
+            const lastPurchase = await Purchase.findOne({
+                shopId: req.shop._id,
+                invoiceNumber: { $regex: `^${prefix}` }
+            }).sort({ invoiceNumber: -1 });
+            
+            let nextNumber = 1;
+            if (lastPurchase && lastPurchase.invoiceNumber) {
+                const lastNumber = parseInt(lastPurchase.invoiceNumber.split('-').pop());
+                nextNumber = lastNumber + 1;
+            }
+            
+            finalInvoiceNumber = `${prefix}${String(nextNumber).padStart(4, '0')}`;
+        }
+
         // Auto-calculate invoice summary if not provided
         let calculatedInvoiceSummary = invoiceSummary || {};
         let calculatedTaxBreakup = taxBreakup || { gst5: {}, gst12: {}, gst18: {}, gst28: {} };
@@ -97,7 +118,7 @@ const createPurchase = async (req, res) => {
             paymentStatus,
             paymentMethod,
             notes,
-            invoiceNumber,
+            invoiceNumber: finalInvoiceNumber,
             invoiceDate: invoiceDate || new Date(),
             invoiceSummary: calculatedInvoiceSummary,
             taxBreakup: calculatedTaxBreakup,
