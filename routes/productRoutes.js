@@ -8,11 +8,14 @@ const {
     deleteProduct,
     adjustStock,
     getInventoryLogs,
-    getInventoryReport
+    getInventoryReport,
+    bulkUpdateLocations
 } = require('../controllers/productController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
+
+router.route('/locations/bulk').put(bulkUpdateLocations);
 
 router.route('/report')
     .get(getInventoryReport);

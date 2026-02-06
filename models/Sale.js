@@ -14,6 +14,21 @@ const saleSchema = new mongoose.Schema(
       discount: { type: Number, default: 0 },
       subtotal: { type: Number, required: true }
     }],
+     patientDetails: {
+        name: String,
+        age: String,
+        gender: { type: String, enum: ['Male', 'Female', 'Other'] },
+        mobile: String,
+        address: String,
+        doctorName: String,
+        doctorAddress: String
+     },
+     shippingDetails: {
+        packingType: { type: String, enum: ['Box', 'Poly', 'Both'], default: 'Box' },
+        boxCount: { type: Number, default: 0 },
+        polyCount: { type: Number, default: 0 },
+        isColdStorage: { type: Boolean, default: false }
+     },
      totalAmount: { type: Number, required: true },
      subTotal: { type: Number, default: 0 },
      taxAmount: { type: Number, default: 0 },

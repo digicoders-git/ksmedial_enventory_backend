@@ -70,6 +70,10 @@ app.use('/api/roles', require('./routes/roleRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/grn', require('./routes/grnRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
+app.use('/api/physical-receiving', require('./routes/physicalReceivingRoutes'));
+app.use('/api/packing-materials', require('./routes/packingMaterialRoutes'));
+app.use('/api/locations', require('./routes/locationRoutes'));
 
 // Error Handling Middleware
 app.use(notFound);

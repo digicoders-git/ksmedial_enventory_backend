@@ -11,6 +11,12 @@ const purchaseSchema = new mongoose.Schema({
          required: true
     },
     
+    // Link to Physical Receiving
+    physicalReceivingId: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'PhysicalReceiving' 
+    },
+
     // Invoice Level Summary
     invoiceSummary: {
         taxableAmount: { type: Number, default: 0 },
@@ -101,7 +107,7 @@ const purchaseSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['Received', 'Pending', 'Cancelled'],
+        enum: ['Received', 'Pending', 'Cancelled', 'Putaway_Pending'],
         default: 'Pending'
     },
     paymentStatus: {

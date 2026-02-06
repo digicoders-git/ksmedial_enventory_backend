@@ -5,7 +5,9 @@ const {
     getPurchases,
     getPurchaseById,
     updatePurchase,
-    deletePurchase
+    deletePurchase,
+    processPutAway,
+    processBulkPutAwayUpload
 } = require('../controllers/purchaseController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -15,9 +17,15 @@ router.route('/')
     .get(getPurchases)
     .post(createPurchase);
 
+router.route('/bulk-putaway-upload')
+    .post(processBulkPutAwayUpload);
+
 router.route('/:id')
     .get(getPurchaseById)
     .put(updatePurchase)
     .delete(deletePurchase);
+
+router.route('/:id/putaway')
+    .put(processPutAway);
 
 module.exports = router;

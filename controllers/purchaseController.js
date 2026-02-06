@@ -2,6 +2,13 @@ const Purchase = require('../models/Purchase');
 const Product = require('../models/Product');
 const Supplier = require('../models/Supplier');
 
+// Helper to extract pack size (e.g. "1x10" -> 10)
+const getPackSize = (packingStr) => {
+    if (!packingStr) return 1;
+    const match = packingStr.toString().match(/(\d+)$/);
+    return match ? parseInt(match[0]) : 1;
+};
+
 // @desc    Create new purchase
 // @route   POST /api/purchases
 // @access  Private
@@ -20,7 +27,8 @@ const createPurchase = async (req, res) => {
             invoiceNumber,
             invoiceDate,
             invoiceSummary,
-            taxBreakup
+            taxBreakup,
+            status // Accept status
         } = req.body;
 
         // Verify supplier
@@ -122,25 +130,32 @@ const createPurchase = async (req, res) => {
             invoiceDate: invoiceDate || new Date(),
             invoiceSummary: calculatedInvoiceSummary,
             taxBreakup: calculatedTaxBreakup,
-            shopId: req.shop._id
+            shopId: req.shop._id,
+            status: status || 'Pending'
         });
 
         const createdPurchase = await purchase.save();
 
-        // Update Product Stock
-        for (const item of items) {
-             const product = await Product.findById(item.productId);
-             if (product) {
-                 const totalQty = (item.receivedQty || 0) + (item.physicalFreeQty || 0) + (item.schemeFreeQty || 0);
-                 product.quantity = (product.quantity || 0) + Number(totalQty);
-                 
-                 // Update pricing if provided
-                 if (item.purchasePrice) product.purchasePrice = item.purchasePrice;
-                 if (item.sellingPrice) product.sellingPrice = item.sellingPrice;
-                 if (item.mrp) product.mrp = item.mrp;
-                 
-                 await product.save();
-             }
+        // Update Product Stock ONLY if status is 'Received' (Direct GRN)
+        // If status is 'Putaway_Pending', stock will be updated later in Put Away Bucket
+        if (status === 'Received') {
+            for (const item of items) {
+                 const product = await Product.findById(item.productId);
+                 if (product) {
+                     const packSize = getPackSize(product.packing);
+                     const totalQtyInStrips = (item.receivedQty || 0) + (item.physicalFreeQty || 0) + (item.schemeFreeQty || 0);
+                     const totalQtyInUnits = Number(totalQtyInStrips) * packSize;
+                     
+                     product.quantity = (product.quantity || 0) + totalQtyInUnits;
+                     
+                     // Update pricing if provided
+                     if (item.purchasePrice) product.purchasePrice = item.purchasePrice;
+                     if (item.sellingPrice) product.sellingPrice = item.sellingPrice;
+                     if (item.mrp) product.mrp = item.mrp;
+                     
+                     await product.save();
+                 }
+            }
         }
 
         res.status(201).json({ success: true, purchase: createdPurchase });
@@ -148,6 +163,10 @@ const createPurchase = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// ... (Rest of file including getPurchases, getPurchaseById, updatePurchase, deletePurchase - keeping them as is)
+
+
 
 // @desc    Get all purchases
 // @route   GET /api/purchases
@@ -272,10 +291,143 @@ const deletePurchase = async (req, res) => {
     }
 };
 
+// @desc    Process Put Away (Move to Live Stock)
+// @route   PUT /api/purchases/:id/putaway
+// @access  Private
+const processPutAway = async (req, res) => {
+    try {
+        const { items: verifiedItems } = req.body; 
+        const purchase = await Purchase.findOne({ _id: req.params.id, shopId: req.shop._id });
+
+        if (!purchase) {
+            return res.status(404).json({ success: false, message: 'Purchase not found' });
+        }
+
+        if (purchase.status === 'Received') {
+             return res.status(400).json({ success: false, message: 'Put away already completed' });
+        }
+        
+        const itemsToProcess = verifiedItems || purchase.items;
+
+        // Update items if verified items provided
+        if (verifiedItems) {
+             purchase.items = verifiedItems;
+             // Note: Totals are not recalculated here. Assumes verification maintains invoice integrity.
+        }
+
+        // Update Product Stock
+        for (const item of itemsToProcess) {
+             const product = await Product.findById(item.productId);
+             if (product) {
+                 const packSize = getPackSize(product.packing);
+                 const totalQtyInStrips = (item.receivedQty || 0) + (item.physicalFreeQty || 0) + (item.schemeFreeQty || 0);
+                 const totalQtyInUnits = Number(totalQtyInStrips) * packSize;
+
+                 product.quantity = (product.quantity || 0) + totalQtyInUnits;
+                 
+                 // Update pricing and location
+                 if (item.purchasePrice) product.purchasePrice = item.purchasePrice;
+                 if (item.sellingPrice) product.sellingPrice = item.sellingPrice;
+                 if (item.mrp) product.mrp = item.mrp;
+                 if (item.rack) product.rackLocation = item.rack; 
+                 
+                 await product.save();
+             }
+        }
+
+        purchase.status = 'Received';
+        await purchase.save();
+
+        res.json({ success: true, message: 'Put away completed and stock updated', purchase });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const processBulkPutAwayUpload = async (req, res) => {
+    try {
+        const { items } = req.body; // Array of { invoiceNumber, sku, rack, quantity }
+        
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'No items provided' });
+        }
+
+        const stats = {
+            updated: 0,
+            notFound: 0,
+            errors: 0
+        };
+
+        // Group by Invoice Number to minimize DB calls
+        const groupedByInvoice = {};
+        for (const item of items) {
+            if (!item.invoiceNumber) continue;
+            if (!groupedByInvoice[item.invoiceNumber]) {
+                groupedByInvoice[item.invoiceNumber] = [];
+            }
+            groupedByInvoice[item.invoiceNumber].push(item);
+        }
+
+        for (const invoiceNumber in groupedByInvoice) {
+            const purchase = await Purchase.findOne({ 
+                invoiceNumber, 
+                shopId: req.shop._id,
+                status: 'Putaway_Pending' // Only update pending ones
+            }).populate('items.productId');
+
+            if (!purchase) {
+                stats.notFound += groupedByInvoice[invoiceNumber].length;
+                continue;
+            }
+
+            let purchaseUpdated = false;
+            const invoiceItems = groupedByInvoice[invoiceNumber];
+
+            for (const uploadItem of invoiceItems) {
+                // Find item in purchase
+                const pItem = purchase.items.find(pi => 
+                    (pi.productId.sku === uploadItem.sku) || // Match by SKU
+                    (pi.productName && uploadItem.productName && pi.productName.toLowerCase() === uploadItem.productName.toLowerCase()) // Match by Name
+                );
+
+                if (pItem) {
+                    if (uploadItem.rack) {
+                        pItem.rack = uploadItem.rack;
+                        purchaseUpdated = true;
+                        stats.updated++;
+                    }
+                    if (uploadItem.quantity) {
+                        // Optional: Update quantity if needed, though risky for bulk without validation
+                        // pItem.receivedQty = Number(uploadItem.quantity);
+                    }
+                } else {
+                    stats.notFound++;
+                }
+            }
+
+            if (purchaseUpdated) {
+                await purchase.save();
+            }
+        }
+
+        res.json({ 
+            success: true, 
+            message: `Processed. Updated: ${stats.updated}, Not Found/Skipped: ${stats.notFound}`,
+            stats 
+        });
+
+    } catch (error) {
+        console.error("Bulk Upload Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     createPurchase,
     getPurchases,
     getPurchaseById,
     updatePurchase,
-    deletePurchase
+    deletePurchase,
+    processPutAway,
+    processBulkPutAwayUpload
 };

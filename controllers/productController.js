@@ -266,6 +266,37 @@ const getInventoryReport = async (req, res) => {
     }
 };
 
+// @desc    Bulk Update Product Locations
+// @route   PUT /api/products/locations/bulk
+// @access  Private
+const bulkUpdateLocations = async (req, res) => {
+    try {
+        const { updates } = req.body; // Expects array of { sku, rack, id }
+        if (!updates || !Array.isArray(updates)) {
+            return res.status(400).json({ success: false, message: 'Invalid updates format' });
+        }
+
+        const operations = updates.map(item => {
+             // Prefer ID if present, else SKU. Note: SKU must be unique in shop ideally.
+             const filter = item.id ? { _id: item.id } : { sku: item.sku };
+             return {
+                 updateOne: {
+                     filter: { ...filter, shopId: req.shop._id },
+                     update: { $set: { rackLocation: item.rack } }
+                 }
+             };
+        });
+
+        if (operations.length > 0) {
+            await Product.bulkWrite(operations);
+        }
+
+        res.json({ success: true, message: `Updated ${operations.length} product locations.` });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getProducts,
     getProductById,
@@ -274,5 +305,6 @@ module.exports = {
     deleteProduct,
     adjustStock,
     getInventoryLogs,
-    getInventoryReport
+    getInventoryReport,
+    bulkUpdateLocations
 };

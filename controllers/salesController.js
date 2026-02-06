@@ -4,13 +4,20 @@ const Customer = require('../models/Customer');
 
 const mongoose = require('mongoose');
 
+// Helper to extract pack size (e.g. "1x10" -> 10)
+const getPackSize = (packingStr) => {
+    if (!packingStr) return 1;
+    const match = packingStr.toString().match(/(\d+)$/);
+    return match ? parseInt(match[0]) : 1;
+};
+
 // @desc    Create new sale
 // @route   POST /api/sales
 // @access  Private
 const createSale = async (req, res) => {
     try {
         const {
-            customer, // Object or ID, handle appropriately
+            customer, // Object or ID
             items,
             subTotal,
             tax,
@@ -18,7 +25,9 @@ const createSale = async (req, res) => {
             totalAmount,
             paymentMethod,
             amountPaid,
-            status
+            status,
+            patientDetails,
+            shippingDetails
         } = req.body;
 
         // 1. Handle Customer
@@ -27,11 +36,9 @@ const createSale = async (req, res) => {
 
         if (customer) {
             if (customer._id) {
-                // Existing customer selected
                  customerId = customer._id;
                  customerName = customer.name;
             } else if (typeof customer === 'string') {
-                // Check if it's an ID
                 if (mongoose.Types.ObjectId.isValid(customer)) {
                     const existing = await Customer.findById(customer);
                     if(existing) {
@@ -41,28 +48,33 @@ const createSale = async (req, res) => {
                         customerName = customer;
                     }
                 } else {
-                    // Treat as name for walk-in
                     customerName = customer;
                 }
             } else if (customer.name) {
-                 // New customer object passed? Or just name
                  customerName = customer.name;
             }
         }
 
-        // 2. Process Items and Check Stock
+        // 2. Process Items and Check Stock (with Pack conversion)
         for (const item of items) {
              const product = await Product.findById(item.productId);
              if (!product) {
                  return res.status(404).json({ success: false, message: `Product not found: ${item.name}` });
              }
-             if (product.quantity < item.quantity) {
-                 return res.status(400).json({ success: false, message: `Insufficient stock for ${product.name}. Available: ${product.quantity}` });
+
+             const packSize = getPackSize(product.packing);
+             const requiredTablets = item.quantity * packSize; // item.quantity is Strips
+
+             if (product.quantity < requiredTablets) {
+                 return res.status(400).json({ 
+                     success: false, 
+                     message: `Insufficient stock for ${product.name}. Available: ${Math.floor(product.quantity / packSize)} Strips (${product.quantity} Units)` 
+                 });
              }
         }
 
         // 3. Create Sale Record
-        const invoiceNumber = 'INV-' + Date.now(); // Simple generator, can be improved
+        const invoiceNumber = 'INV-' + Date.now(); 
 
         const sale = new Sale({
             invoiceNumber,
@@ -75,15 +87,20 @@ const createSale = async (req, res) => {
             totalAmount, 
             paymentMethod,
             status: status || 'Paid',
-            shopId: req.shop._id
+            shopId: req.shop._id,
+            patientDetails,
+            shippingDetails
         });
 
         const createdSale = await sale.save();
 
-        // 4. Update Stock
+        // 4. Update Stock (Deduct Tablets)
         for (const item of items) {
             const product = await Product.findById(item.productId);
-            product.quantity = product.quantity - item.quantity;
+            const packSize = getPackSize(product.packing);
+            const deductQty = item.quantity * packSize;
+
+            product.quantity = product.quantity - deductQty;
             await product.save();
         }
 

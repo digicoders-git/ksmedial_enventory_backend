@@ -2,6 +2,12 @@ const SaleReturn = require('../models/SaleReturn');
 const Sale = require('../models/Sale');
 const Product = require('../models/Product');
 
+const getPackSize = (packingStr) => {
+    if (!packingStr) return 1;
+    const match = packingStr.toString().match(/(\d+)$/);
+    return match ? parseInt(match[0]) : 1;
+};
+
 // @desc    Create new sale return
 // @route   POST /api/sales/returns
 // @access  Private
@@ -39,11 +45,16 @@ const createSaleReturn = async (req, res) => {
 
         const createdReturn = await saleReturn.save();
 
-        // Update inventory: increment quantity for returned items
+        // Update inventory: increment quantity for returned items (Convert Strips to Units)
         for (const item of items) {
-            await Product.findByIdAndUpdate(item.productId, {
-                $inc: { quantity: item.quantity }
-            });
+            const product = await Product.findById(item.productId);
+            if (product) {
+                const packSize = getPackSize(product.packing);
+                const returnQtyInUnits = item.quantity * packSize; // item.quantity is Strips
+                
+                product.quantity = (product.quantity || 0) + returnQtyInUnits;
+                await product.save();
+            }
         }
 
         // Smarter Sale status update
