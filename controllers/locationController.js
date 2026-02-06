@@ -93,12 +93,44 @@ const updateLocation = async (req, res) => {
         const location = await Location.findOne({ _id: req.params.id, shopId: req.shop._id });
 
         if (location) {
+            const { aisle, rack, shelf, bin, partition } = req.body;
+            
+            // Check if hierarchy is changing
+            const hierarchyChanged = 
+                (aisle && aisle !== location.aisle) ||
+                (rack && rack !== location.rack) ||
+                (shelf && shelf !== location.shelf) ||
+                (bin && bin !== location.bin) ||
+                (partition && partition !== location.partition);
+
+            if (hierarchyChanged) {
+                const newAisle = aisle || location.aisle;
+                const newRack = rack || location.rack;
+                const newShelf = shelf || location.shelf;
+                const newBin = bin || location.bin;
+                const newPartition = partition || location.partition;
+
+                const newLocationCode = `${newAisle}-${newRack}-${newShelf}-${newBin}-${newPartition}`;
+                
+                // Check duplicate
+                const exists = await Location.findOne({ locationCode: newLocationCode, shopId: req.shop._id });
+                if (exists && exists._id.toString() !== location._id.toString()) {
+                     return res.status(400).json({ success: false, message: 'Location code already exists' });
+                }
+
+                location.aisle = newAisle;
+                location.rack = newRack;
+                location.shelf = newShelf;
+                location.bin = newBin;
+                location.partition = newPartition;
+                location.locationCode = newLocationCode;
+                location.qrCode = await QRCode.toDataURL(newLocationCode);
+            }
+
             location.vendorName = req.body.vendorName || location.vendorName;
             location.category = req.body.category || location.category;
             location.status = req.body.status || location.status;
             location.temperatureType = req.body.temperatureType || location.temperatureType;
-            
-            // Re-generate QR if hierarchy changes (optional, usually hierarchy shouldn't change easily)
             
             const updatedLocation = await location.save();
             res.json({ success: true, location: updatedLocation });
@@ -115,9 +147,8 @@ const updateLocation = async (req, res) => {
 // @access  Private
 const deleteLocation = async (req, res) => {
     try {
-        const location = await Location.findOne({ _id: req.params.id, shopId: req.shop._id });
+        const location = await Location.findOneAndDelete({ _id: req.params.id, shopId: req.shop._id });
         if (location) {
-            await location.remove();
             res.json({ success: true, message: 'Location removed' });
         } else {
             res.status(404).json({ success: false, message: 'Location not found' });
