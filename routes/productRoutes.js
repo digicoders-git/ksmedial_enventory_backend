@@ -9,12 +9,19 @@ const {
     adjustStock,
     getInventoryLogs,
     getInventoryReport,
-    bulkUpdateLocations
+    bulkUpdateLocations,
+    deleteInventory,
+    clearInventoryLogs,
+    searchProducts
 } = require('../controllers/productController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
 
+router.get('/search', searchProducts);
+
+router.route('/clear-all').delete(deleteInventory);
+router.route('/logs/clear').delete(clearInventoryLogs);
 router.route('/locations/bulk').put(bulkUpdateLocations);
 
 router.route('/report')

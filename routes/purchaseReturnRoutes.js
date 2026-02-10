@@ -5,11 +5,15 @@ const {
     getPurchaseReturns,
     getPurchaseReturnById,
     updatePurchaseReturn,
-    deletePurchaseReturn
+    deletePurchaseReturn,
+    clearAllPurchaseReturns
 } = require('../controllers/purchaseReturnController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
+
+router.route('/clear-all')
+    .delete(clearAllPurchaseReturns);
 
 router.route('/')
     .get(getPurchaseReturns)

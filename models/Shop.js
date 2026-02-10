@@ -25,7 +25,8 @@ const shopSchema = new mongoose.Schema(
       expiryAlertDays: { type: Number, default: 60 },
       enableNegativeStock: { type: Boolean, default: false },
       barcodePrefix: { type: String, default: 'MED' },
-      printLabels: { type: Boolean, default: true }
+      printLabels: { type: Boolean, default: true },
+      outOfStockAlertThreshold: { type: Number, default: 5 }
     },
     appSettings: {
       language: { type: String, default: 'en-US' },

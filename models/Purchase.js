@@ -18,6 +18,16 @@ const purchaseSchema = new mongoose.Schema({
     },
 
     // Invoice Level Summary
+    priority: {
+        type: String,
+        enum: ['P1', 'P2', 'P3'],
+        default: 'P3'
+    },
+    receivingLocation: {
+        type: String,
+        default: 'Dock-1'
+    },
+    
     invoiceSummary: {
         taxableAmount: { type: Number, default: 0 },
         tcsAmount: { type: Number, default: 0 },

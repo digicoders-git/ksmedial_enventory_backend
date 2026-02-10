@@ -1,6 +1,7 @@
 const Purchase = require('../models/Purchase');
 const Product = require('../models/Product');
 const Supplier = require('../models/Supplier');
+const PhysicalReceiving = require('../models/PhysicalReceiving');
 
 // Helper to extract pack size (e.g. "1x10" -> 10)
 const getPackSize = (packingStr) => {
@@ -28,7 +29,10 @@ const createPurchase = async (req, res) => {
             invoiceDate,
             invoiceSummary,
             taxBreakup,
-            status // Accept status
+            priority,
+            receivingLocation,
+            status,
+            physicalReceivingId // Get from frontend
         } = req.body;
 
         // Verify supplier
@@ -131,10 +135,23 @@ const createPurchase = async (req, res) => {
             invoiceSummary: calculatedInvoiceSummary,
             taxBreakup: calculatedTaxBreakup,
             shopId: req.shop._id,
-            status: status || 'Pending'
+            status: status || 'Pending',
+            priority: priority || 'P3',
+            receivingLocation: receivingLocation || 'Dock-1'
         });
 
         const createdPurchase = await purchase.save();
+
+        // LINK TO PHYSICAL RECEIVING IF ID PROVIDED
+        if (physicalReceivingId) {
+            const prEntry = await PhysicalReceiving.findOne({ physicalReceivingId });
+            if (prEntry) {
+                prEntry.grnStatus = 'Done';
+                prEntry.grnId = createdPurchase._id;
+                prEntry.grnDate = Date.now();
+                await prEntry.save();
+            }
+        }
 
         // Update Product Stock ONLY if status is 'Received' (Direct GRN)
         // If status is 'Putaway_Pending', stock will be updated later in Put Away Bucket
@@ -179,7 +196,11 @@ const getPurchases = async (req, res) => {
         const query = { shopId: req.shop._id };
         
         if (req.query.keyword) {
-            query.invoiceNumber = { $regex: req.query.keyword, $options: 'i' };
+            query.$or = [
+                { invoiceNumber: { $regex: req.query.keyword, $options: 'i' } },
+                { 'items.skuId': { $regex: req.query.keyword, $options: 'i' } },
+                { 'items.productName': { $regex: req.query.keyword, $options: 'i' } }
+            ];
         }
         
         if (req.query.supplierId) {
@@ -188,6 +209,14 @@ const getPurchases = async (req, res) => {
 
         if (req.query.status && req.query.status !== 'All') {
             query.status = req.query.status;
+        }
+
+        if (req.query.priority && req.query.priority !== 'All') {
+            query.priority = req.query.priority;
+        }
+
+        if (req.query.receivingLocation) {
+            query.receivingLocation = { $regex: req.query.receivingLocation, $options: 'i' };
         }
 
         // Date filtering
@@ -236,7 +265,18 @@ const getPurchases = async (req, res) => {
 // @access  Private
 const getPurchaseById = async (req, res) => {
     try {
-const purchase = await Purchase.findOne({ _id: req.params.id, shopId: req.shop._id })
+        const id = req.params.id ? req.params.id.trim() : '';
+        const mongoose = require('mongoose');
+        
+        let query = { shopId: req.shop._id };
+
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            query._id = id;
+        } else {
+            query.invoiceNumber = id;
+        }
+
+        const purchase = await Purchase.findOne(query)
             .populate('supplierId', 'name email phone gstNumber address')
             .populate('items.productId', 'name sku');
 
@@ -422,6 +462,15 @@ const processBulkPutAwayUpload = async (req, res) => {
     }
 };
 
+const clearPurchases = async (req, res) => {
+    try {
+        await Purchase.deleteMany({ shopId: req.shop._id });
+        res.json({ success: true, message: 'All purchase invoices cleared successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     createPurchase,
     getPurchases,
@@ -429,5 +478,6 @@ module.exports = {
     updatePurchase,
     deletePurchase,
     processPutAway,
-    processBulkPutAwayUpload
+    processBulkPutAwayUpload,
+    clearPurchases
 };

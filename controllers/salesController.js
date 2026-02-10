@@ -127,7 +127,8 @@ const getSales = async (req, res) => {
             queryParts.push({
                 $or: [
                     { customerName: { $regex: req.query.keyword, $options: 'i' } },
-                    { invoiceNumber: { $regex: req.query.keyword, $options: 'i' } }
+                    { invoiceNumber: { $regex: req.query.keyword, $options: 'i' } },
+                    { 'items.name': { $regex: req.query.keyword, $options: 'i' } }
                 ]
             });
         }
@@ -153,6 +154,23 @@ const getSales = async (req, res) => {
 
         if (queryParts.length > 0) {
             Object.assign(query, { $and: queryParts });
+        }
+
+        // Add Date Range Filter
+        if (req.query.startDate && req.query.endDate) {
+            query.createdAt = {
+                $gte: new Date(req.query.startDate),
+                $lte: new Date(req.query.endDate)
+            };
+        } else if (req.query.startDate) {
+            query.createdAt = { $gte: new Date(req.query.startDate) };
+        } else if (req.query.endDate) {
+             query.createdAt = { $lte: new Date(req.query.endDate) };
+        }
+
+        // Add Payment Method Filter
+        if (req.query.paymentMethod && req.query.paymentMethod !== 'All') {
+            query.paymentMethod = req.query.paymentMethod;
         }
 
         const count = await Sale.countDocuments(query);
@@ -263,6 +281,13 @@ const updateSale = async (req, res) => {
         const sale = await Sale.findOne({ _id: saleId, shopId: req.shop._id });
         if (!sale) {
             return res.status(404).json({ success: false, message: 'Sale record not found' });
+        }
+
+        // Special Case: Status Update Only
+        if (status && !items && !customer && !totalAmount) {
+            sale.status = status;
+            await sale.save();
+            return res.json({ success: true, sale, message: 'Status updated successfully' });
         }
 
         // 1. Restore previous stock levels

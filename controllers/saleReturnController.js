@@ -152,8 +152,18 @@ const getSaleReturnById = async (req, res) => {
     }
 };
 
+const clearSaleReturns = async (req, res) => {
+    try {
+        await SaleReturn.deleteMany({ shopId: req.shop._id });
+        res.json({ success: true, message: 'All sale returns cleared successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     createSaleReturn,
     getSaleReturns,
-    getSaleReturnById
+    getSaleReturnById,
+    clearSaleReturns
 };

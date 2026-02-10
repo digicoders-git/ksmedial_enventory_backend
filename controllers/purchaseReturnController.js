@@ -172,10 +172,33 @@ const deletePurchaseReturn = async (req, res) => {
     }
 };
 
+const clearAllPurchaseReturns = async (req, res) => {
+    try {
+        const returns = await PurchaseReturn.find({ shopId: req.shop._id });
+        
+        // Restore stock for each return
+        for (const pr of returns) {
+            for (const item of pr.items) {
+                const product = await Product.findById(item.productId);
+                if (product) {
+                    product.quantity = (product.quantity || 0) + Number(item.returnQuantity || item.quantity);
+                    await product.save();
+                }
+            }
+        }
+        
+        await PurchaseReturn.deleteMany({ shopId: req.shop._id });
+        res.json({ success: true, message: 'All purchase returns cleared and stock restored' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     createPurchaseReturn,
     getPurchaseReturns,
     getPurchaseReturnById,
     updatePurchaseReturn,
-    deletePurchaseReturn
+    deletePurchaseReturn,
+    clearAllPurchaseReturns
 };

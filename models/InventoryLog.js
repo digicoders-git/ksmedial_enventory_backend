@@ -10,6 +10,9 @@ const inventoryLogSchema = new mongoose.Schema(
     batchNumber: { type: String }, // Snapshot
     note: { type: String },
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
+    adjustedByName: { type: String },
+    adjustedByEmail: { type: String },
+    adjustedByMobile: { type: String },
     date: { type: Date, default: Date.now }
   },
   { timestamps: true }

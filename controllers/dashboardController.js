@@ -196,44 +196,76 @@ const getDashboardStats = async (req, res) => {
             { $group: { _id: { $ifNull: ['$supplier.name', 'Unknown'] }, count: { $sum: 1 } } }
         ]);
 
-        // 14. Online Order Management Workflow - Auto Transition Logic
-        const allOrders = await Order.find({ 
-            status: { $in: ['pending', 'confirmed', 'Picking', 'On Hold'] } 
-        });
+        // 14. Advanced Queue Analytics & Workflow
+        const allOrders = await Order.find();
+        
+        // Helper to bucket orders by hours
+        const getAgeBuckets = (ordersList) => {
+            const buckets = { '0-3': 0, '3-6': 0, '6-12': 0, '12-24': 0, '24-36': 0, '36-48': 0, '>48': 0 };
+            const now = new Date();
+            ordersList.forEach(o => {
+                const diffMs = now - new Date(o.createdAt);
+                const hours = diffMs / (1000 * 60 * 60);
+                
+                if (hours <= 3) buckets['0-3']++;
+                else if (hours <= 6) buckets['3-6']++;
+                else if (hours <= 12) buckets['6-12']++;
+                else if (hours <= 24) buckets['12-24']++;
+                else if (hours <= 36) buckets['24-36']++;
+                else if (hours <= 48) buckets['36-48']++;
+                else buckets['>48']++;
+            });
+            return {
+                categories: Object.keys(buckets),
+                data: Object.values(buckets),
+                total: ordersList.length
+            };
+        };
 
-        for (const order of allOrders) {
-            let canFulfill = true;
-            for (const item of order.items) {
-                const product = await Product.findById(item.product);
-                if (!product || product.quantity < item.quantity) {
-                    canFulfill = false;
-                    break;
-                }
-            }
+        const todayStr = new Date().toDateString();
 
-            // Map website 'pending' or 'confirmed' to our internal workflow statuses
-            let newStatus = order.status;
-            if (['pending', 'confirmed', 'Picking', 'On Hold'].includes(order.status)) {
-                newStatus = canFulfill ? 'Picking' : 'On Hold';
-            }
+        const queueStats = {
+            all: getAgeBuckets(allOrders), // Added for Total Order Ageing Chart
+            rapid: getAgeBuckets(allOrders.filter(o => o.rapidOrderType && o.rapidOrderType !== 'N/A')),
+            onHold: getAgeBuckets(allOrders.filter(o => o.status === 'On Hold')),
+            picking: getAgeBuckets(allOrders.filter(o => o.status === 'Picking')),
+            qualityCheck: getAgeBuckets(allOrders.filter(o => o.status === 'Quality Check' || o.status === 'Under QC')),
+            packing: getAgeBuckets(allOrders.filter(o => o.status === 'Packing')),
+            shipping: getAgeBuckets(allOrders.filter(o => o.status === 'Shipping' || o.status === 'shipped')),
+            problem: getAgeBuckets(allOrders.filter(o => o.status === 'Problem Queue')),
+            billing: getAgeBuckets(allOrders.filter(o => o.status === 'Billing')),
+            returns: getAgeBuckets(allOrders.filter(o => o.status === 'Returned' || o.status === 'Sales Return')),
             
-            if (order.status !== newStatus) {
-                order.status = newStatus;
-                await order.save();
+            // Inbound Placeholders (using Purchase data for approximation)
+            inbound: {
+                overall: getAgeBuckets(pendingPurchases), // Using pending purchases as proxy
+                grn: getAgeBuckets(pendingPurchases), // Same for now
+                putAway: getAgeBuckets([]) // Placeholder
             }
-        }
+        };
 
-        const orders = await Order.find();
+        const kpi = {
+            totalOrders: allOrders.length,
+            processedOrders: allOrders.filter(o => ['shipped', 'delivered'].includes(o.status)).length,
+            pushedBack: allOrders.filter(o => o.status === 'Problem Queue').length,
+            dailyShipped: allOrders.filter(o => ['shipped', 'delivered'].includes(o.status) && new Date(o.updatedAt).toDateString() === todayStr).length,
+            avgPickingTime: "34m", // Placeholder/Mock
+            avgQCTime: "15m", // Placeholder/Mock
+            fulfilledRate: "98.5%" // Placeholder/Mock
+        };
+
+        // Existing simple workflow for backward compatibility if needed
         const orderWorkflow = {
-            total: orders.length,
-            picking: orders.filter(o => o.status === 'Picking').length,
-            onHold: orders.filter(o => o.status === 'On Hold').length,
-            billing: orders.filter(o => o.status === 'Billing').length,
-            packing: orders.filter(o => o.status === 'Packing').length,
-            shipping: orders.filter(o => o.status === 'shipped' || o.status === 'Shipping').length,
-            problemQueue: orders.filter(o => o.status === 'Problem Queue').length,
-            delivered: orders.filter(o => o.status === 'delivered').length,
-            dailyOrders: orders.filter(o => new Date(o.createdAt).toDateString() === now.toDateString()).length
+            total: allOrders.length,
+            picking: queueStats.picking.total,
+            onHold: queueStats.onHold.total,
+            billing: queueStats.billing.total,
+            packing: queueStats.packing.total,
+            shipping: queueStats.shipping.total,
+            problemQueue: queueStats.problem.total,
+            delivered: allOrders.filter(o => o.status === 'delivered').length,
+            dailyOrders: allOrders.filter(o => new Date(o.createdAt).toDateString() === todayStr).length,
+            last7DaysTrend: [] // Will calc below
         };
 
         // Calculate last 7 days order trend
@@ -242,7 +274,7 @@ const getDashboardStats = async (req, res) => {
             const targetDate = new Date();
             targetDate.setDate(targetDate.getDate() - i);
             const dateStr = targetDate.toDateString();
-            const count = orders.filter(o => new Date(o.createdAt).toDateString() === dateStr).length;
+            const count = allOrders.filter(o => new Date(o.createdAt).toDateString() === dateStr).length;
             last7DaysTrend.push(count);
         }
         orderWorkflow.last7DaysTrend = last7DaysTrend;
@@ -279,7 +311,8 @@ const getDashboardStats = async (req, res) => {
         res.json({
             success: true,
             stats: {
-                inventoryStatus: outOfStockMedicines > 5 ? "Alert" : "Good",
+                inventoryStatus: outOfStockMedicines > (req.shop.inventorySettings?.outOfStockAlertThreshold || 5) ? "Alert" : "Good",
+                alertThreshold: req.shop.inventorySettings?.outOfStockAlertThreshold || 5,
                 totalRevenue: monthlyRevenue,
                 totalMedicines,
                 shortageCount: lowStockMedicines + outOfStockMedicines,
@@ -329,7 +362,9 @@ const getDashboardStats = async (req, res) => {
                         amount: p.grandTotal,
                         items: p.items.length
                     }))
-                }
+                },
+                queueStats, // Detailed queue analytics
+                kpi // High-level KPIs
             }
         });
 

@@ -7,7 +7,8 @@ const {
     updatePurchase,
     deletePurchase,
     processPutAway,
-    processBulkPutAwayUpload
+    processBulkPutAwayUpload,
+    clearPurchases
 } = require('../controllers/purchaseController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -19,6 +20,8 @@ router.route('/')
 
 router.route('/bulk-putaway-upload')
     .post(processBulkPutAwayUpload);
+
+router.delete('/clear', clearPurchases);
 
 router.route('/:id')
     .get(getPurchaseById)

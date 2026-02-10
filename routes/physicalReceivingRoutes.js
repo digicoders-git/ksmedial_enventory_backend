@@ -5,8 +5,12 @@ const {
     getEntries,
     getEntry,
     validateEntry,
-    updateGRNStatus
+    updateGRNStatus,
+    clearAllEntries
 } = require('../controllers/physicalReceivingController');
+
+router.route('/clear-all')
+    .delete(clearAllEntries);
 
 router.route('/')
     .post(createEntry)

@@ -4,7 +4,8 @@ const {
     getCustomers,
     createCustomer,
     updateCustomer,
-    deleteCustomer
+    deleteCustomer,
+    clearAllCustomers
 } = require('../controllers/customerController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -13,6 +14,9 @@ router.use(protect);
 router.route('/')
     .get(getCustomers)
     .post(createCustomer);
+
+router.delete('/clear-all', clearAllCustomers);
+
 
 router.route('/:id')
     .put(updateCustomer)

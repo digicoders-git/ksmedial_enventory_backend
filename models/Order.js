@@ -57,6 +57,13 @@ const orderSchema = new mongoose.Schema(
 
     shippingAddress: { type: addressSchema, required: true },
     notes: { type: String, default: "" },
+
+    // Enhanced Tracking Fields
+    vendorId: { type: String },
+    orderType: { type: String, default: 'KS4' },
+    rapidOrderType: { type: String },
+    vendorRefId: { type: String },
+    expectedHandover: { type: Date },
     
     prescriptionImage: {
       url: { type: String },

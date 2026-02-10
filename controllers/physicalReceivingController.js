@@ -173,10 +173,20 @@ const validateEntry = asyncHandler(async (req, res) => {
     }
 });
 
+const clearAllEntries = asyncHandler(async (req, res) => {
+    try {
+        await PhysicalReceiving.deleteMany({});
+        res.json({ success: true, message: 'All physical receiving entries cleared' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 module.exports = {
     createEntry,
     getEntries,
     getEntry,
     validateEntry,
-    updateGRNStatus
+    updateGRNStatus,
+    clearAllEntries
 };

@@ -93,9 +93,22 @@ const deleteCustomer = async (req, res) => {
     }
 };
 
+// @desc    Clear all customers
+// @route   DELETE /api/customers/clear-all
+// @access  Private
+const clearAllCustomers = async (req, res) => {
+    try {
+        await Customer.deleteMany({ shopId: req.shop._id });
+        res.json({ success: true, message: 'All customers cleared successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getCustomers,
     createCustomer,
     updateCustomer,
-    deleteCustomer
+    deleteCustomer,
+    clearAllCustomers
 };

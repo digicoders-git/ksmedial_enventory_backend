@@ -41,7 +41,8 @@ const createProduct = async (req, res) => {
             name, genericName, company, batchNumber, expiryDate, 
             purchasePrice, sellingPrice, quantity, category, sku, 
             reorderLevel, packing, hsnCode, tax, unit, description,
-            isPrescriptionRequired, rackLocation, image, brand, status
+            isPrescriptionRequired, rackLocation, image, brand, status,
+            manufacturingDate
         } = req.body;
 
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
@@ -59,6 +60,7 @@ const createProduct = async (req, res) => {
             reorderLevel: reorderLevel || 20,
             packing, hsnCode, tax, unit, description,
             isPrescriptionRequired, rackLocation, image, brand, status,
+            manufacturingDate,
             shopId: req.shop._id
         });
 
@@ -102,7 +104,7 @@ const deleteProduct = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Product not found' });
         }
 
-        await product.remove();
+        await Product.deleteOne({ _id: req.params.id, shopId: req.shop._id });
         res.json({ success: true, message: 'Product removed' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -114,7 +116,7 @@ const deleteProduct = async (req, res) => {
 // @access  Private
 const adjustStock = async (req, res) => {
     try {
-        const { type, quantity, reason, note } = req.body;
+        const { type, quantity, reason, note, adjusterName, adjusterEmail, adjusterMobile } = req.body;
         const product = await Product.findOne({ _id: req.params.id, shopId: req.shop._id });
 
         if (!product) {
@@ -140,6 +142,9 @@ const adjustStock = async (req, res) => {
             batchNumber: product.batchNumber,
             note,
             shopId: req.shop._id,
+            adjustedByName: adjusterName || req.shop.ownerName,
+            adjustedByEmail: adjusterEmail || req.shop.email,
+            adjustedByMobile: adjusterMobile || req.shop.contactNumber,
             date: new Date()
         });
 
@@ -297,6 +302,94 @@ const bulkUpdateLocations = async (req, res) => {
     }
 };
 
+const deleteInventory = async (req, res) => {
+    try {
+        await Product.deleteMany({ shopId: req.shop._id });
+        res.json({ success: true, message: 'Inventory cleared successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const clearInventoryLogs = async (req, res) => {
+    try {
+        await InventoryLog.deleteMany({ shopId: req.shop._id });
+        res.json({ success: true, message: 'Inventory logs cleared successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Search products with pagination for Inventory Master
+// @route   GET /api/products/search
+// @access  Private
+    const searchProducts = async (req, res) => {
+    try {
+        const { 
+            page = 1, 
+            limit = 25, 
+            sku, 
+            name, 
+            batch, 
+            location, 
+            tags,
+            nearExpiry,
+            lowStock
+        } = req.query;
+
+        const query = { shopId: req.shop._id };
+
+        if (sku) query.sku = { $regex: sku, $options: 'i' };
+        if (name) query.name = { $regex: name, $options: 'i' };
+        if (batch) query.batchNumber = batch; // Exact match
+        if (location) query.rackLocation = { $regex: location, $options: 'i' };
+        if (tags) query.$or = [
+            { category: { $regex: tags, $options: 'i' } },
+            { group: { $regex: tags, $options: 'i' } }
+        ];
+
+        // Fetch all matching basic criteria to perform advanced filtering in JS
+        // (Due to mixed date formats or string dates)
+        let products = await Product.find(query).sort({ createdAt: -1 });
+
+        // Filter: Near Expiry (within 90 days)
+        if (nearExpiry === 'true') {
+            const today = new Date();
+            const ninetyDaysFromNow = new Date();
+            ninetyDaysFromNow.setDate(today.getDate() + 90);
+
+            products = products.filter(p => {
+                if (!p.expiryDate || p.expiryDate === 'N/A') return false;
+                const exp = new Date(p.expiryDate);
+                // Check if valid date and within 90 days (or already expired)
+                return !isNaN(exp) && exp <= ninetyDaysFromNow;
+            });
+        }
+
+        // Filter: Low Stock (less than minLevel or 10)
+        if (lowStock === 'true') {
+            products = products.filter(p => p.quantity <= (p.reorderLevel || 10));
+        }
+
+        const total = products.length;
+        
+        // Manual Pagination
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + parseInt(limit);
+        const paginatedProducts = products.slice(startIndex, endIndex);
+
+        res.json({
+            success: true,
+            products: paginatedProducts,
+            total,
+            page: parseInt(page),
+            pages: Math.ceil(total / limit)
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getProducts,
     getProductById,
@@ -306,5 +399,8 @@ module.exports = {
     adjustStock,
     getInventoryLogs,
     getInventoryReport,
-    bulkUpdateLocations
+    bulkUpdateLocations,
+    deleteInventory,
+    clearInventoryLogs,
+    searchProducts
 };

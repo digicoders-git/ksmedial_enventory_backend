@@ -12,7 +12,8 @@ const getOrders = async (req, res) => {
         // For now, let's fetch all orders if they share the same DB.
         const orders = await Order.find()
             .sort({ createdAt: -1 })
-            .populate('userId', 'name email phone');
+            .populate('userId', 'name email phone')
+            .populate('items.product', 'name sku');
             
         res.json({
             success: true,
