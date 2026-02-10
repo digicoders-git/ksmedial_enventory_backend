@@ -193,7 +193,14 @@ const getDashboardStats = async (req, res) => {
             { $match: { shopId: new mongoose.Types.ObjectId(shopId), status: 'Pending' } },
             { $lookup: { from: 'suppliers', localField: 'supplierId', foreignField: '_id', as: 'supplier' } },
             { $unwind: { path: '$supplier', preserveNullAndEmptyArrays: true } },
-            { $group: { _id: { $ifNull: ['$supplier.name', 'Unknown'] }, count: { $sum: 1 } } }
+            { 
+                $group: { 
+                    _id: { $ifNull: ['$supplier.name', 'Unknown'] }, 
+                    count: { $sum: 1 },
+                    totalAmount: { $sum: "$grandTotal" }
+                } 
+            },
+            { $sort: { totalAmount: -1 } }
         ]);
 
         // 14. Advanced Queue Analytics & Workflow
@@ -238,9 +245,10 @@ const getDashboardStats = async (req, res) => {
             
             // Inbound Placeholders (using Purchase data for approximation)
             inbound: {
-                overall: getAgeBuckets(pendingPurchases), // Using pending purchases as proxy
-                grn: getAgeBuckets(pendingPurchases), // Same for now
-                putAway: getAgeBuckets([]) // Placeholder
+                overall: getAgeBuckets(pendingPurchases), // Overall Pending
+                pendingInvoices: getAgeBuckets(pendingPurchases.filter(p => p.status === 'Pending')), // Truly Pending
+                physicalValidation: getAgeBuckets(pendingPurchases.filter(p => p.status === 'Received')), // Received but not GRN
+                grn: getAgeBuckets(pendingPurchases.filter(p => !p.status || p.status === 'Pending')) // Ready for GRN
             }
         };
 
@@ -308,6 +316,44 @@ const getDashboardStats = async (req, res) => {
             }
         }
 
+        // 16. Daily Closing Summary (Payment Mode Breakdown)
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const paymentStats = await Sale.aggregate([
+            {
+                $match: {
+                    shopId: new mongoose.Types.ObjectId(shopId),
+                    createdAt: { $gte: startOfDay, $lte: endOfDay },
+                    status: { $in: ['Paid', 'Partial'] } // Only count valid sales
+                }
+            },
+            {
+                $group: {
+                    _id: "$paymentMethod",
+                    totalAmount: { $sum: "$totalAmount" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Format to ensure all modes are present even if 0 (Cash, Online, Card, UPI, Credit)
+        const formattedPaymentStats = {
+            Cash: 0,
+            Online: 0,
+            Card: 0,
+            UPI: 0,
+            Credit: 0
+        };
+
+        paymentStats.forEach(stat => {
+            if (formattedPaymentStats.hasOwnProperty(stat._id)) {
+                formattedPaymentStats[stat._id] = stat.totalAmount;
+            }
+        });
+
         res.json({
             success: true,
             stats: {
@@ -351,7 +397,8 @@ const getDashboardStats = async (req, res) => {
                     ageing: Object.keys(ageingBuckets).map(key => ({ name: key, y: ageingBuckets[key] })),
                     supplierBreakup: pendingGrnBySupplier.map(item => ({
                         name: item._id,
-                        y: item.count
+                        y: item.count,
+                        amount: item.totalAmount
                     })),
                     invoiceQueue: pendingPurchases.map(p => ({
                         id: p._id,
@@ -364,6 +411,7 @@ const getDashboardStats = async (req, res) => {
                     }))
                 },
                 queueStats, // Detailed queue analytics
+                dailyClosingStats: formattedPaymentStats, // New Daily Closing Stats
                 kpi // High-level KPIs
             }
         });
