@@ -203,6 +203,30 @@ const getDashboardStats = async (req, res) => {
             { $sort: { totalAmount: -1 } }
         ]);
 
+        // 13.5 Financial Liability (Received but Pending Payment)
+        const financialLiability = await Purchase.aggregate([
+            { 
+                $match: { 
+                    shopId: new mongoose.Types.ObjectId(shopId), 
+                    status: 'Received', // Only confirmed GRNs
+                    paymentStatus: { $in: ['Pending', 'Partial'] } // Unpaid or Partially Paid
+                } 
+            },
+            { $lookup: { from: 'suppliers', localField: 'supplierId', foreignField: '_id', as: 'supplier' } },
+            { $unwind: { path: '$supplier', preserveNullAndEmptyArrays: true } },
+            { 
+                $group: { 
+                    _id: { $ifNull: ['$supplier.name', 'Unknown'] }, 
+                    count: { $sum: 1 },
+                    // Simplified: Assuming grandTotal is the liability for now. 
+                    // Ideally, track 'balanceAmount' if partial payments exist.
+                    // For now, let's sum grandTotal for unpaid ones.
+                    totalLiability: { $sum: "$grandTotal" } 
+                } 
+            },
+            { $sort: { totalLiability: -1 } }
+        ]);
+
         // 14. Advanced Queue Analytics & Workflow
         const allOrders = await Order.find();
         
@@ -399,6 +423,11 @@ const getDashboardStats = async (req, res) => {
                         name: item._id,
                         y: item.count,
                         amount: item.totalAmount
+                    })),
+                    financialLiability: financialLiability.map(item => ({
+                        name: item._id,
+                        y: item.count,
+                        amount: item.totalLiability
                     })),
                     invoiceQueue: pendingPurchases.map(p => ({
                         id: p._id,
