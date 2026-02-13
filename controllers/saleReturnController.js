@@ -11,6 +11,9 @@ const getPackSize = (packingStr) => {
 // @desc    Create new sale return
 // @route   POST /api/sales/returns
 // @access  Private
+// @desc    Create new sale return
+// @route   POST /api/sales/returns
+// @access  Private
 const createSaleReturn = async (req, res) => {
     try {
         const {
@@ -39,23 +42,11 @@ const createSaleReturn = async (req, res) => {
             items,
             totalAmount,
             reason,
-            status: status || 'Refunded',
+            status: status || 'Putaway_Pending',
             shopId: req.shop._id
         });
 
         const createdReturn = await saleReturn.save();
-
-        // Update inventory: increment quantity for returned items (Convert Strips to Units)
-        for (const item of items) {
-            const product = await Product.findById(item.productId);
-            if (product) {
-                const packSize = getPackSize(product.packing);
-                const returnQtyInUnits = item.quantity * packSize; // item.quantity is Strips
-                
-                product.quantity = (product.quantity || 0) + returnQtyInUnits;
-                await product.save();
-            }
-        }
 
         // Smarter Sale status update
         sale.returnedAmount = (sale.returnedAmount || 0) + totalAmount;
@@ -82,13 +73,66 @@ const createSaleReturn = async (req, res) => {
     }
 };
 
+// @desc    Complete Put Away for Sale Return (Update Inventory)
+// @route   PUT /api/sales/returns/:id/putaway
+// @access  Private
+const completePutAway = async (req, res) => {
+    try {
+        const { items: putAwayItems } = req.body; // Items with rack info from frontend
+        const saleReturn = await SaleReturn.findById(req.params.id);
+        
+        if (!saleReturn) {
+            return res.status(404).json({ success: false, message: 'Return not found' });
+        }
+
+        if (saleReturn.status === 'Refunded') {
+            return res.status(400).json({ success: false, message: 'Already processed' });
+        }
+
+        // Update inventory: increment quantity for returned items (Convert Strips to Units)
+        for (const item of saleReturn.items) {
+            const product = await Product.findById(item.productId);
+            if (product) {
+                const packSize = getPackSize(product.packing);
+                const returnQtyInUnits = item.quantity * packSize; // item.quantity is Strips
+                
+                product.quantity = (product.quantity || 0) + returnQtyInUnits;
+
+                // Update Rack Location if provided
+                if (putAwayItems && putAwayItems.length > 0) {
+                    // Try to match by _id or productId
+                    const matchedItem = putAwayItems.find(p => 
+                        (p._id && p._id.toString() === item._id.toString()) || 
+                        (p.productId && p.productId.toString() === item.productId.toString())
+                    );
+                    
+                    if (matchedItem && matchedItem.rack) {
+                        product.rackLocation = matchedItem.rack;
+                    }
+                }
+
+                await product.save();
+            }
+        }
+
+        saleReturn.status = 'Refunded'; // Mark as Completed/Refunded
+        await saleReturn.save();
+
+        res.json({ success: true, message: 'Put away completed, stock updated', saleReturn });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // @desc    Get all sale returns
 // @route   GET /api/sales/returns
 // @access  Private
 const getSaleReturns = async (req, res) => {
     try {
-        const { keyword, startDate, endDate, page = 1, limit = 10 } = req.query;
+        const { keyword, startDate, endDate, status, page = 1, limit = 10 } = req.query;
         const query = { shopId: req.shop._id };
+
+        if (status) query.status = status;
 
         if (keyword) {
             query.$or = [
@@ -165,5 +209,6 @@ module.exports = {
     createSaleReturn,
     getSaleReturns,
     getSaleReturnById,
-    clearSaleReturns
+    clearSaleReturns,
+    completePutAway
 };

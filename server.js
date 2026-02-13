@@ -74,6 +74,7 @@ app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/physical-receiving', require('./routes/physicalReceivingRoutes'));
 app.use('/api/packing-materials', require('./routes/packingMaterialRoutes'));
 app.use('/api/locations', require('./routes/locationRoutes'));
+app.use('/api/purchase-orders', require('./routes/purchaseOrderRoutes'));
 
 // Error Handling Middleware
 app.use(notFound);

@@ -318,10 +318,9 @@ const updatePurchase = async (req, res) => {
 // @access  Private
 const deletePurchase = async (req, res) => {
     try {
-        const purchase = await Purchase.findOne({ _id: req.params.id, shopId: req.shop._id });
+        const purchase = await Purchase.findOneAndDelete({ _id: req.params.id, shopId: req.shop._id });
 
         if (purchase) {
-            await purchase.remove();
             res.json({ success: true, message: 'Purchase removed' });
         } else {
             res.status(404).json({ success: false, message: 'Purchase not found' });

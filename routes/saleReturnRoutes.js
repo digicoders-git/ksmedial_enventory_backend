@@ -4,7 +4,8 @@ const {
     createSaleReturn, 
     getSaleReturns, 
     getSaleReturnById,
-    clearSaleReturns
+    clearSaleReturns,
+    completePutAway
 } = require('../controllers/saleReturnController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -18,5 +19,7 @@ router.delete('/clear', clearSaleReturns);
 
 router.route('/:id')
     .get(getSaleReturnById);
+
+router.put('/:id/putaway', completePutAway);
 
 module.exports = router;
