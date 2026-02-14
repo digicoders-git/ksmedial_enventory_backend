@@ -51,6 +51,10 @@ const purchaseOrderSchema = new mongoose.Schema({
         totalAmount: {
             type: Number,
             required: true
+        },
+        supplier: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Supplier'
         }
     }],
     totalAmount: {
@@ -76,11 +80,26 @@ const purchaseOrderSchema = new mongoose.Schema({
 });
 
 // Middleware to auto-generate PO Number
+// Middleware to auto-generate PO Number
 purchaseOrderSchema.pre('validate', async function() {
     if (!this.poNumber) {
-        const count = await mongoose.model('PurchaseOrder').countDocuments();
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        this.poNumber = `PO-${dateStr}-${(count + 1).toString().padStart(4, '0')}`;
+        const datePrefix = `PO-${dateStr}-`;
+        
+        // Find the last PO created today
+        const lastPO = await mongoose.model('PurchaseOrder').findOne({
+            poNumber: { $regex: `^${datePrefix}` }
+        }).sort({ poNumber: -1 });
+
+        let sequence = 1;
+        if (lastPO) {
+            const lastSeq = parseInt(lastPO.poNumber.split('-')[2]);
+            if (!isNaN(lastSeq)) {
+                sequence = lastSeq + 1;
+            }
+        }
+
+        this.poNumber = `${datePrefix}${sequence.toString().padStart(4, '0')}`;
     }
 });
 

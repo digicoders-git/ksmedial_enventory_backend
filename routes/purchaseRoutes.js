@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const upload = require('../middleware/uploadMiddleware');
 const {
     createPurchase,
     getPurchases,
@@ -16,7 +17,7 @@ router.use(protect);
 
 router.route('/')
     .get(getPurchases)
-    .post(createPurchase);
+    .post(upload.single('invoiceFile'), createPurchase);
 
 router.route('/bulk-putaway-upload')
     .post(processBulkPutAwayUpload);

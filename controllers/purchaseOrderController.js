@@ -130,7 +130,10 @@ exports.getPurchaseOrderById = async (req, res) => {
             query = { poNumber: id };
         }
 
-        const order = await PurchaseOrder.findOne(query).populate('items.product');
+        const order = await PurchaseOrder.findOne(query)
+            .populate('items.product')
+            .populate('supplierId')
+            .populate('items.supplier');
         
         if (!order) return res.status(404).json({ message: 'Order not found' });
         res.status(200).json(order);

@@ -137,6 +137,9 @@ const purchaseSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    invoiceFile: {
+        type: String // Path to uploaded file
+    },
     shopId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Shop',

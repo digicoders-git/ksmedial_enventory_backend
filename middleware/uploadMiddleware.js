@@ -33,14 +33,14 @@ const upload = multer({
 
 // Check file type
 function checkFileType(file, cb) {
-    const filetypes = /jpeg|jpg|png|gif/;
+    const filetypes = /jpeg|jpg|png|gif|pdf|doc|docx/;
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = filetypes.test(file.mimetype);
 
-    if (mimetype && extname) {
+    if (extname) { // Rely mainly on extension as mimetype can vary for docs
         return cb(null, true);
     } else {
-        cb('Error: Images Only!');
+        cb('Error: Images and Documents Only!');
     }
 }
 

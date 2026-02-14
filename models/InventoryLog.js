@@ -13,7 +13,13 @@ const inventoryLogSchema = new mongoose.Schema(
     adjustedByName: { type: String },
     adjustedByEmail: { type: String },
     adjustedByMobile: { type: String },
-    date: { type: Date, default: Date.now }
+    date: { type: Date, default: Date.now },
+    status: {
+        type: String,
+        enum: ['Completed', 'Putaway_Pending'],
+        default: 'Completed'
+    },
+    tempLocation: { type: String }, // To store rack/location during putaway process
   },
   { timestamps: true }
 );

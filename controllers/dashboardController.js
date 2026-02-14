@@ -235,7 +235,8 @@ const getDashboardStats = async (req, res) => {
             const buckets = { '0-3': 0, '3-6': 0, '6-12': 0, '12-24': 0, '24-36': 0, '36-48': 0, '>48': 0 };
             const now = new Date();
             ordersList.forEach(o => {
-                const diffMs = now - new Date(o.createdAt);
+                const date = o.createdAt || o.purchaseDate || new Date(); // Fallback for robustness
+                const diffMs = now - new Date(date);
                 const hours = diffMs / (1000 * 60 * 60);
                 
                 if (hours <= 3) buckets['0-3']++;
@@ -255,6 +256,12 @@ const getDashboardStats = async (req, res) => {
 
         const todayStr = new Date().toDateString();
 
+        // Fetch broader set for Inbound Queues
+        const inboundPurchases = await Purchase.find({
+            shopId,
+            status: { $in: ['Pending', 'Received', 'Putaway_Pending'] }
+        });
+
         const queueStats = {
             all: getAgeBuckets(allOrders), // Added for Total Order Ageing Chart
             rapid: getAgeBuckets(allOrders.filter(o => o.rapidOrderType && o.rapidOrderType !== 'N/A')),
@@ -267,12 +274,12 @@ const getDashboardStats = async (req, res) => {
             billing: getAgeBuckets(allOrders.filter(o => o.status === 'Billing')),
             returns: getAgeBuckets(allOrders.filter(o => o.status === 'Returned' || o.status === 'Sales Return')),
             
-            // Inbound Placeholders (using Purchase data for approximation)
+            // Inbound Queues (Corrected to include Received/Putaway items)
             inbound: {
-                overall: getAgeBuckets(pendingPurchases), // Overall Pending
-                pendingInvoices: getAgeBuckets(pendingPurchases.filter(p => p.status === 'Pending')), // Truly Pending
-                physicalValidation: getAgeBuckets(pendingPurchases.filter(p => p.status === 'Received')), // Received but not GRN
-                grn: getAgeBuckets(pendingPurchases.filter(p => !p.status || p.status === 'Pending')) // Ready for GRN
+                overall: getAgeBuckets(inboundPurchases),
+                pendingInvoices: getAgeBuckets(inboundPurchases.filter(p => p.status === 'Pending')),
+                physicalValidation: getAgeBuckets(inboundPurchases.filter(p => p.status === 'Received')), 
+                grn: getAgeBuckets(inboundPurchases.filter(p => p.status === 'Pending'))
             }
         };
 

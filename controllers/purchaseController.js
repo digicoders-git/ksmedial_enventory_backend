@@ -15,7 +15,7 @@ const getPackSize = (packingStr) => {
 // @access  Private
 const createPurchase = async (req, res) => {
     try {
-        const {
+        let {
             supplierId,
             items,
             subTotal,
@@ -34,6 +34,18 @@ const createPurchase = async (req, res) => {
             status,
             physicalReceivingId // Get from frontend
         } = req.body;
+
+        // Parse JSON strings if necessary (Multipart/Form-Data sends objects as strings)
+        if (typeof items === 'string') items = JSON.parse(items);
+        if (typeof invoiceSummary === 'string') invoiceSummary = JSON.parse(invoiceSummary);
+        if (typeof taxBreakup === 'string') taxBreakup = JSON.parse(taxBreakup);
+
+        // Get File Path if uploaded
+        let invoiceFile = null;
+        if (req.file) {
+            // Store relative path (e.g., /uploads/filename.pdf)
+            invoiceFile = `/uploads/${req.file.filename}`;
+        }
 
         // Verify supplier
         const supplier = await Supplier.findById(supplierId);
@@ -137,7 +149,8 @@ const createPurchase = async (req, res) => {
             shopId: req.shop._id,
             status: status || 'Pending',
             priority: priority || 'P3',
-            receivingLocation: receivingLocation || 'Dock-1'
+            receivingLocation: receivingLocation || 'Dock-1',
+            invoiceFile: invoiceFile // Save file path
         });
 
         const createdPurchase = await purchase.save();

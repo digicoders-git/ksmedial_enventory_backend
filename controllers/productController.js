@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 const InventoryLog = require('../models/InventoryLog');
+const Sale = require('../models/Sale');
 
 // @desc    Get all products for a shop
 // @route   GET /api/products
@@ -114,6 +115,9 @@ const deleteProduct = async (req, res) => {
 // @desc    Adjust product stock
 // @route   PUT /api/products/:id/adjust
 // @access  Private
+// @desc    Adjust product stock
+// @route   PUT /api/products/:id/adjust
+// @access  Private
 const adjustStock = async (req, res) => {
     try {
         const { type, quantity, reason, note, adjusterName, adjusterEmail, adjusterMobile } = req.body;
@@ -124,31 +128,108 @@ const adjustStock = async (req, res) => {
         }
 
         const qtyChange = parseInt(quantity);
+        let log;
+
         if (type === 'add') {
-            product.quantity += qtyChange;
+             // For Stock Addition: Create Log with 'Putaway_Pending' status, DO NOT update stock yet.
+            log = await InventoryLog.create({
+                type: 'IN',
+                reason,
+                quantity: qtyChange,
+                productId: product._id,
+                productName: product.name,
+                batchNumber: product.batchNumber,
+                note,
+                shopId: req.shop._id,
+                adjustedByName: adjusterName || req.shop.ownerName,
+                adjustedByEmail: adjusterEmail || req.shop.email,
+                adjustedByMobile: adjusterMobile || req.shop.contactNumber,
+                date: new Date(),
+                status: 'Putaway_Pending' // New Pending Status
+            });
+
+            return res.json({ 
+                success: true, 
+                message: 'Stock adjustment submitted! Added to Put Away Bucket for verification.',
+                log 
+            });
+
         } else {
+            // For Deduction: Update immediately
             product.quantity = Math.max(0, product.quantity - qtyChange);
+            await product.save();
+
+            // Log transaction
+            log = await InventoryLog.create({
+                type: 'OUT',
+                reason,
+                quantity: qtyChange,
+                productId: product._id,
+                productName: product.name,
+                batchNumber: product.batchNumber,
+                note,
+                shopId: req.shop._id,
+                adjustedByName: adjusterName || req.shop.ownerName,
+                adjustedByEmail: adjusterEmail || req.shop.email,
+                adjustedByMobile: adjusterMobile || req.shop.contactNumber,
+                date: new Date(),
+                status: 'Completed'
+            });
+
+             res.json({ success: true, product, log });
         }
 
-        await product.save();
+       
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
 
-        // Log transaction
-        const log = await InventoryLog.create({
-            type: type === 'add' ? 'IN' : 'OUT',
-            reason,
-            quantity: qtyChange,
-            productId: product._id,
-            productName: product.name,
-            batchNumber: product.batchNumber,
-            note,
-            shopId: req.shop._id,
-            adjustedByName: adjusterName || req.shop.ownerName,
-            adjustedByEmail: adjusterEmail || req.shop.email,
-            adjustedByMobile: adjusterMobile || req.shop.contactNumber,
-            date: new Date()
-        });
+// @desc    Get pending putaway logs (Stock Adjustments)
+// @route   GET /api/products/putaway/pending
+// @access  Private
+const getPendingPutAwayLogs = async (req, res) => {
+    try {
+        const logs = await InventoryLog.find({ 
+            shopId: req.shop._id, 
+            status: 'Putaway_Pending' 
+        }).populate('productId', 'name sku batchNumber expiryDate purchasePrice packing').sort({ date: -1 });
 
-        res.json({ success: true, product, log });
+        res.json({ success: true, logs });
+    } catch (error) {
+         res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Complete Put Away for a Log
+// @route   PUT /api/products/putaway/complete/:id
+// @access  Private
+const completePutAwayLog = async (req, res) => {
+    try {
+        const { rackLocation } = req.body;
+        const log = await InventoryLog.findOne({ _id: req.params.id, shopId: req.shop._id });
+
+        if (!log) {
+            return res.status(404).json({ success: false, message: 'Log not found' });
+        }
+
+        if (log.status === 'Completed') {
+            return res.status(400).json({ success: false, message: 'Already completed' });
+        }
+
+        const product = await Product.findOne({ _id: log.productId, shopId: req.shop._id });
+        if(product) {
+            product.quantity += log.quantity;
+            if(rackLocation) product.rackLocation = rackLocation;
+            await product.save();
+        }
+
+        log.status = 'Completed';
+        if(rackLocation) log.tempLocation = rackLocation; // Store where it was put
+        await log.save();
+
+        res.json({ success: true, message: 'Stock updated successfully', product });
+
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -323,7 +404,7 @@ const clearInventoryLogs = async (req, res) => {
 // @desc    Search products with pagination for Inventory Master
 // @route   GET /api/products/search
 // @access  Private
-    const searchProducts = async (req, res) => {
+const searchProducts = async (req, res) => {
     try {
         const { 
             page = 1, 
@@ -390,6 +471,43 @@ const clearInventoryLogs = async (req, res) => {
     }
 };
 
+// @desc    Get non-moving stock (No sales in last 30 days)
+// @route   GET /api/products/non-moving
+// @access  Private
+const getNonMovingStock = async (req, res) => {
+    try {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        // 1. Find all sales in last 30 days
+        const sales = await Sale.find({
+            shopId: req.shop._id,
+            createdAt: { $gte: thirtyDaysAgo }
+        }).select('items.productId');
+
+        // 2. Extract product IDs sold
+        const soldProductIds = new Set();
+        sales.forEach(sale => {
+            sale.items.forEach(item => {
+                if (item.productId) soldProductIds.add(item.productId.toString());
+            });
+        });
+
+        // 3. Find products NOT in sold list (and have stock > 0) AND were created > 30 days ago
+        const nonMovingProducts = await Product.find({
+            shopId: req.shop._id,
+            quantity: { $gt: 0 },
+            _id: { $nin: Array.from(soldProductIds) },
+            createdAt: { $lte: thirtyDaysAgo } // Strict check: Must be older than 30 days
+        }).sort({ createdAt: -1 });
+
+        res.json({ success: true, products: nonMovingProducts });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getProducts,
     getProductById,
@@ -398,9 +516,12 @@ module.exports = {
     deleteProduct,
     adjustStock,
     getInventoryLogs,
+    getPendingPutAwayLogs,
+    completePutAwayLog,
     getInventoryReport,
     bulkUpdateLocations,
     deleteInventory,
     clearInventoryLogs,
-    searchProducts
+    searchProducts,
+    getNonMovingStock
 };
