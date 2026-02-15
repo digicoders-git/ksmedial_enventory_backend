@@ -31,6 +31,7 @@ const addressSchema = new mongoose.Schema(
 const orderSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    orderNumber: { type: String, unique: true },
     items: { type: [orderItemSchema], required: true },
 
     subtotal: { type: Number, required: true },
@@ -41,7 +42,11 @@ const orderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "confirmed", "shipped", "delivered", "cancelled", "Picking", "On Hold", "Packing", "Problem Queue", "Billing"],
+      enum: [
+        "pending", "confirmed", "shipped", "delivered", "cancelled", 
+        "Picking", "On Hold", "Packing", "Problem Queue", "Billing",
+        "Picklist Generated", "Quality Check", "Scanned For Shipping", "Unallocated"
+      ],
       default: "pending",
     },
     paymentStatus: {
