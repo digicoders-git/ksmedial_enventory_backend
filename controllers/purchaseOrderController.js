@@ -1,5 +1,6 @@
 const PurchaseOrder = require('../models/PurchaseOrder');
 const Product = require('../models/Product');
+const Supplier = require('../models/Supplier');
 const mongoose = require('mongoose');
 
 // Helper to parse date
@@ -59,10 +60,10 @@ exports.getRequisitions = async (req, res) => {
     }
 };
 
-// 2. Create Purchase Order
+// 2. Create Purchase Order (Modified to split by supplier)
 exports.createPurchaseOrder = async (req, res) => {
     try {
-        const { supplierName, supplierId, items, expectedDeliveryDate, status, notes } = req.body;
+        const { items, expectedDeliveryDate, status, notes, poDate } = req.body;
         
         // Use shopId from body OR req.shop (prefer req.shop)
         const shopId = req.shop ? req.shop._id : req.body.shopId;
@@ -71,38 +72,74 @@ exports.createPurchaseOrder = async (req, res) => {
              return res.status(400).json({ message: 'Shop ID is missing. Ensure you are logged in.' });
         }
 
-        // Auto Generate PO Number handled by Schema pre-save
-        let totalAmount = 0;
-        
-        // Calculate Total
-        const processedItems = items.map(item => {
-            const itemTotal = item.purchaseRate * item.quantity;
-            totalAmount += itemTotal + (itemTotal * (item.gst || 0) / 100);
-            return {
-                ...item,
-                totalAmount: itemTotal + (itemTotal * (item.gst || 0) / 100)
-            };
+        // Group items by supplier
+        const itemsBySupplier = {};
+        for (const item of items) {
+            const sid = item.supplier || item.supplierId || 'others';
+            if (!itemsBySupplier[sid]) itemsBySupplier[sid] = [];
+            itemsBySupplier[sid].push(item);
+        }
+
+        const supplierIds = Object.keys(itemsBySupplier);
+        const createdPOs = [];
+
+        for (const sid of supplierIds) {
+            const supplierItems = itemsBySupplier[sid];
+            let poTotal = 0;
+            
+            const processedItems = supplierItems.map(item => {
+                const itemTotal = item.purchaseRate * item.quantity;
+                const totalWithGst = itemTotal + (itemTotal * (item.gst || 0) / 100);
+                poTotal += totalWithGst;
+                return {
+                    ...item,
+                    supplier: sid !== 'others' ? sid : null,
+                    totalAmount: totalWithGst
+                };
+            });
+
+            let supplierName = 'Unknown Supplier';
+            let supplierId = null;
+
+            if (sid !== 'others') {
+                const foundSupplier = await Supplier.findById(sid);
+                if (foundSupplier) {
+                    supplierName = foundSupplier.name;
+                    supplierId = foundSupplier._id;
+                }
+            }
+
+            const newPO = new PurchaseOrder({
+                poDate: poDate || Date.now(),
+                expectedDeliveryDate,
+                supplierName,
+                supplierId,
+                items: processedItems,
+                totalAmount: poTotal,
+                status: status || 'Draft',
+                notes,
+                shopId
+            });
+
+            await newPO.save();
+            createdPOs.push(newPO);
+        }
+
+        res.status(201).json({
+            success: true,
+            message: `${createdPOs.length} Purchase Order(s) created successfully.`,
+            orders: createdPOs,
+            // Return first PO data for general success handling
+            poNumber: createdPOs[0]?.poNumber,
+            order: createdPOs[0]
         });
 
-        const newPO = new PurchaseOrder({
-            supplierName,
-            supplierId,
-            items: processedItems,
-            totalAmount,
-            expectedDeliveryDate,
-            status: status || 'Draft',
-            notes,
-            shopId
-        });
-
-        await newPO.save();
-        res.status(201).json(newPO);
     } catch (error) {
         console.error('Error creating PO:', error);
         res.status(500).json({ 
             message: 'Error creating Purchase Order', 
             error: error.message,
-            details: error.errors // Mongoose validation errors
+            details: error.errors
         });
     }
 };

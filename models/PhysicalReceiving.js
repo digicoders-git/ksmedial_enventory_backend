@@ -26,7 +26,16 @@ const physicalReceivingSchema = new mongoose.Schema({
     grnStatus: { type: String, enum: ['Pending', 'Done'], default: 'Pending' },
     grnId: { type: mongoose.Schema.Types.ObjectId, ref: 'Purchase' },
     invoiceImageUrl: { type: String },
-    grnDate: { type: Date }
+    grnDate: { type: Date },
+
+    // Item Validation Fields
+    items: [{
+        productName: { type: String },
+        sku: { type: String },
+        orderedQty: { type: Number },
+        receivedQty: { type: Number },
+        discrepancy: { type: Number }
+    }]
 }, {
     timestamps: true
 });

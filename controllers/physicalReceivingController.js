@@ -17,7 +17,8 @@ const createEntry = asyncHandler(async (req, res) => {
         polyCount,
         location,
         poIds,
-        isPoNotPresent
+        isPoNotPresent,
+        items // New Field
     } = req.body;
 
     // Generate IDs
@@ -37,6 +38,7 @@ const createEntry = asyncHandler(async (req, res) => {
         location,
         poIds,
         isPoNotPresent,
+        items, // Added
         systemId,
         physicalReceivingId,
         status: 'Pending'
