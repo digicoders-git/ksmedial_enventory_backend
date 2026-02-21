@@ -116,7 +116,7 @@ exports.createPurchaseOrder = async (req, res) => {
                 supplierId,
                 items: processedItems,
                 totalAmount: poTotal,
-                status: status || 'Draft',
+                status: status || 'Draft', // Use status from req.body, default to 'Draft'
                 notes,
                 shopId
             });

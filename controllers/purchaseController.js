@@ -178,11 +178,30 @@ const createPurchase = async (req, res) => {
                      
                      product.quantity = (product.quantity || 0) + totalQtyInUnits;
                      
-                     // Update pricing if provided
-                     if (item.purchasePrice) product.purchasePrice = item.purchasePrice;
-                     if (item.sellingPrice) product.sellingPrice = item.sellingPrice;
+                     // Update pricing and SKU details
+                     const pPrice = item.purchasePrice || item.baseRate;
+                     if (pPrice) product.purchasePrice = pPrice;
+                     
+                     const sPrice = item.sellingPrice || item.mrp;
+                     if (sPrice) product.sellingPrice = sPrice;
+                     
                      if (item.mrp) product.mrp = item.mrp;
                      
+                     // Sync Batch, Expiry, Mfg Date, HSN, Tax from GRN
+                     if (item.batchNumber) product.batchNumber = item.batchNumber;
+                     if (item.expiryDate && !isNaN(new Date(item.expiryDate).getTime())) {
+                         product.expiryDate = new Date(item.expiryDate).toISOString().split('T')[0];
+                     }
+                     if (item.mfgDate && !isNaN(new Date(item.mfgDate).getTime())) {
+                         product.manufacturingDate = new Date(item.mfgDate).toISOString().split('T')[0];
+                     }
+                     if (item.hsnCode) product.hsnCode = item.hsnCode;
+                     if (item.pack) product.packing = item.pack;
+                     
+                     const totalTax = (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0);
+                     if (totalTax > 0) product.tax = totalTax;
+                     
+                     product.isInventoryLive = true;
                      await product.save();
                  }
             }
@@ -377,15 +396,34 @@ const processPutAway = async (req, res) => {
 
                  product.quantity = (product.quantity || 0) + totalQtyInUnits;
                  
-                 // Update pricing and location
-                 if (item.purchasePrice) product.purchasePrice = item.purchasePrice;
-                 if (item.sellingPrice) product.sellingPrice = item.sellingPrice;
+                 // Update pricing, location and SKU details
+                 const pPrice = item.purchasePrice || item.baseRate;
+                 if (pPrice) product.purchasePrice = pPrice;
+                 
+                 const sPrice = item.sellingPrice || item.mrp;
+                 if (sPrice) product.sellingPrice = sPrice;
+                 
                  if (item.mrp) product.mrp = item.mrp;
                  if (item.rack) product.rackLocation = item.rack; 
                  
-                 await product.save();
-             }
-        }
+                 // Sync Batch, Expiry, Mfg Date, HSN, Tax from PutAway
+                 if (item.batchNumber) product.batchNumber = item.batchNumber;
+                 if (item.expiryDate && !isNaN(new Date(item.expiryDate).getTime())) {
+                     product.expiryDate = new Date(item.expiryDate).toISOString().split('T')[0];
+                 }
+                 if (item.mfgDate && !isNaN(new Date(item.mfgDate).getTime())) {
+                     product.manufacturingDate = new Date(item.mfgDate).toISOString().split('T')[0];
+                 }
+                 if (item.hsnCode) product.hsnCode = item.hsnCode;
+                 if (item.pack) product.packing = item.pack;
+
+                  const totalTax = (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0);
+                  if (totalTax > 0) product.tax = totalTax;
+                  
+                  product.isInventoryLive = true;
+                  await product.save();
+              }
+         }
 
         purchase.status = 'Received';
         await purchase.save();

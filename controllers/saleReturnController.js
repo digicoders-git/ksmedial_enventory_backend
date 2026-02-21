@@ -145,19 +145,16 @@ const getSaleReturns = async (req, res) => {
         if (startDate || endDate) {
             query.createdAt = {};
             if (startDate) {
-                const sDate = new Date(startDate);
-                sDate.setHours(0, 0, 0, 0);
-                query.createdAt.$gte = sDate;
+                query.createdAt.$gte = new Date(startDate);
             }
             if (endDate) {
-                const eDate = new Date(endDate);
-                eDate.setHours(23, 59, 59, 999);
-                query.createdAt.$lte = eDate;
+                query.createdAt.$lte = new Date(endDate);
             }
         }
 
         const count = await SaleReturn.countDocuments(query);
         const returns = await SaleReturn.find(query)
+            .populate('items.productId', 'name batchNumber sku')
             .sort({ createdAt: -1 })
             .limit(Number(limit))
             .skip(Number(limit) * (Number(page) - 1));

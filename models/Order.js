@@ -77,7 +77,9 @@ const orderSchema = new mongoose.Schema(
     
     // Added for Inventory Panel Workflow
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
-    problemDescription: { type: String }
+    problemDescription: { type: String },
+    trackingId: { type: String }, // Added
+    trackingUrl: { type: String } // Added
   },
   { timestamps: true }
 );

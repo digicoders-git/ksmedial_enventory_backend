@@ -78,6 +78,7 @@ const getPurchaseReturns = async (req, res) => {
         const returns = await PurchaseReturn.find(query)
             .populate('supplierId', 'name phone gstNumber address')
             .populate('purchaseId', 'invoiceNumber')
+            .populate('items.productId', 'name batchNumber sku')
             .sort({ createdAt: -1 })
             .limit(pageSize)
             .skip(pageSize * (page - 1));

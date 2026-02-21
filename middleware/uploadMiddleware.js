@@ -33,14 +33,18 @@ const upload = multer({
 
 // Check file type
 function checkFileType(file, cb) {
-    const filetypes = /jpeg|jpg|png|gif|pdf|doc|docx/;
+    // Expanded to allow all common image formats + documents
+    const filetypes = /jpeg|jpg|png|gif|webp|svg|avif|bmp|tiff|pdf|doc|docx/;
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = filetypes.test(file.mimetype);
+    
+    // Check if it's an image mimetype
+    const isImageMime = file.mimetype.startsWith('image/');
+    const isDocMime = /pdf|msword|officedocument/.test(file.mimetype);
 
-    if (extname) { // Rely mainly on extension as mimetype can vary for docs
+    if (extname || isImageMime || isDocMime) {
         return cb(null, true);
     } else {
-        cb('Error: Images and Documents Only!');
+        cb('Error: Invalid file format! Only images and documents are allowed.');
     }
 }
 

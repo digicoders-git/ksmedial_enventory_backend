@@ -16,7 +16,10 @@ const getCategories = async (req, res) => {
             });
             return {
                 ...cat._doc,
-                count
+                count,
+                defaultUnit: cat.defaultUnit,
+                gst: cat.gst,
+                isActive: cat.isActive
             };
         }));
 
@@ -31,13 +34,16 @@ const getCategories = async (req, res) => {
 // @access  Private
 const createCategory = async (req, res) => {
     try {
-        const { name, description, color } = req.body;
+        const { name, description, color, defaultUnit, gst, isActive } = req.body;
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
         
         const category = await Category.create({
             name,
             description,
             color,
+            defaultUnit,
+            gst,
+            isActive,
             slug: slug,
             shopId: req.shop._id
         });

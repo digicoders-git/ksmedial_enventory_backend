@@ -7,7 +7,11 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true, unique: true },
     password: { type: String, required: true, select: false },
-    isActive: { type: Boolean, default: true }
+    isActive: { type: Boolean, default: true },
+    referralCode: { type: String, unique: true },
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    walletBalance: { type: Number, default: 0 },
+    totalEarnings: { type: Number, default: 0 }
   },
   { 
     timestamps: true,

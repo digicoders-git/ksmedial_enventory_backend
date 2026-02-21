@@ -13,24 +13,25 @@ const getDashboardStats = async (req, res) => {
     try {
         const shopId = req.shop._id;
 
-        // 1. Total Medicines Count
-        const totalMedicines = await Product.countDocuments({ shopId });
+        // 1. Total Medicines Count (Live only for stock dashboard)
+        const totalMedicines = await Product.countDocuments({ shopId, isInventoryLive: true });
 
-        // 2. Low Stock Count (e.g., < 20)
-        // In a real app, this should compare against individual product's reorderLevel
+        // 2. Low Stock Count
         const lowStockMedicines = await Product.countDocuments({ 
             shopId, 
+            isInventoryLive: true,
             quantity: { $gt: 0, $lte: 20 } 
         });
 
         // 3. Out of Stock Count
         const outOfStockMedicines = await Product.countDocuments({ 
             shopId, 
+            isInventoryLive: true,
             quantity: 0 
         });
 
         // 4. Total Stock Value
-        const stockItems = await Product.find({ shopId });
+        const stockItems = await Product.find({ shopId, isInventoryLive: true });
         const totalStockValue = stockItems.reduce((acc, item) => acc + (item.quantity * item.sellingPrice), 0);
 
         // 5. Sales Stats (Current Month)
@@ -54,7 +55,7 @@ const getDashboardStats = async (req, res) => {
         const totalCustomers = await Customer.countDocuments({ shopId });
 
         // 7. Medicine Groups (Distinct Categories)
-        const categories = await Product.distinct('category', { shopId });
+        const categories = await Product.distinct('category', { shopId, isInventoryLive: true });
         const totalGroups = categories.filter(c => c).length;
 
         // 8. Monthly Revenue Data for Chart (Current Year)
@@ -85,7 +86,7 @@ const getDashboardStats = async (req, res) => {
 
         // 9. Category Distribution (for Pie Chart)
         const categoryStats = await Product.aggregate([
-            { $match: { shopId: new mongoose.Types.ObjectId(shopId) } },
+            { $match: { shopId: new mongoose.Types.ObjectId(shopId), isInventoryLive: true } },
             { $group: { _id: "$category", count: { $sum: 1 } } }
         ]);
 

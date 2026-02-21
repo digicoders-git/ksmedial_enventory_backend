@@ -11,6 +11,12 @@ const getProducts = async (req, res) => {
         if (req.query.category) {
             query.category = { $regex: new RegExp(`^${req.query.category}$`, 'i') }; // Case-insensitive match
         }
+        if (req.query.isLive === 'true') {
+            query.isInventoryLive = true;
+            query.quantity = { $gt: 0 };
+        } else if (req.query.isLive === 'false') {
+            query.isInventoryLive = false;
+        }
         const products = await Product.find(query).sort({ createdAt: -1 });
         res.json({ success: true, products });
     } catch (error) {
@@ -190,10 +196,21 @@ const adjustStock = async (req, res) => {
 // @access  Private
 const getPendingPutAwayLogs = async (req, res) => {
     try {
-        const logs = await InventoryLog.find({ 
+        const { startDate, endDate } = req.query;
+        const query = { 
             shopId: req.shop._id, 
             status: 'Putaway_Pending' 
-        }).populate('productId', 'name sku batchNumber expiryDate purchasePrice packing').sort({ date: -1 });
+        };
+
+        if (startDate || endDate) {
+            query.date = {};
+            if (startDate) query.date.$gte = new Date(startDate);
+            if (endDate) query.date.$lte = new Date(endDate);
+        }
+
+        const logs = await InventoryLog.find(query)
+            .populate('productId', 'name sku batchNumber expiryDate purchasePrice packing')
+            .sort({ date: -1 });
 
         res.json({ success: true, logs });
     } catch (error) {
@@ -220,6 +237,7 @@ const completePutAwayLog = async (req, res) => {
         const product = await Product.findOne({ _id: log.productId, shopId: req.shop._id });
         if(product) {
             product.quantity += log.quantity;
+            product.isInventoryLive = true; // Manual addition makes it live
             if(rackLocation) product.rackLocation = rackLocation;
             await product.save();
         }
@@ -419,6 +437,12 @@ const searchProducts = async (req, res) => {
         } = req.query;
 
         const query = { shopId: req.shop._id };
+        
+        // Filter for Live Stock only when requested (e.g., from Inventory Master)
+        if (req.query.isLive === 'true') {
+            query.isInventoryLive = true;
+            query.quantity = { $gt: 0 };
+        }
 
         if (sku) query.sku = { $regex: sku, $options: 'i' };
         if (name) query.name = { $regex: name, $options: 'i' };
@@ -430,8 +454,12 @@ const searchProducts = async (req, res) => {
         ];
 
         // Fetch all matching basic criteria to perform advanced filtering in JS
-        // (Due to mixed date formats or string dates)
         let products = await Product.find(query).sort({ createdAt: -1 });
+
+        // Extra safety check: If isLive is requested, ensure no 0 qty items leaked through
+        if (req.query.isLive === 'true') {
+            products = products.filter(p => p.quantity > 0);
+        }
 
         // Filter: Near Expiry (within 90 days)
         if (nearExpiry === 'true') {

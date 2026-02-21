@@ -79,6 +79,10 @@ app.use('/api/physical-receiving', require('./routes/physicalReceivingRoutes'));
 app.use('/api/packing-materials', require('./routes/packingMaterialRoutes'));
 app.use('/api/locations', require('./routes/locationRoutes'));
 app.use('/api/purchase-orders', require('./routes/purchaseOrderRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/kyc', require('./routes/kycRoutes'));
+app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
+app.use('/api/mlm', require('./routes/mlmRoutes'));
 
 // Error Handling Middleware
 app.use(notFound);
