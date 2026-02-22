@@ -30,7 +30,8 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Serve Uploads
 const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const uploadsDir = path.resolve('uploads');
+app.use('/uploads', express.static(uploadsDir));
 
 // Basic Route
 app.get('/', (req, res) => {
