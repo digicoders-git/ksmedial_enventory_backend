@@ -35,7 +35,7 @@ const saleSchema = new mongoose.Schema(
      taxAmount: { type: Number, default: 0 },
      discountAmount: { type: Number, default: 0 },
      returnedAmount: { type: Number, default: 0 },
-     paymentMethod: { type: String, enum: ['Cash', 'Online', 'Card', 'UPI', 'Credit'], default: 'Cash' },
+     paymentMethod: { type: String, enum: ['Cash', 'Online', 'Card', 'UPI', 'Credit', 'Bank Transfer', 'Cheque'], default: 'Cash' },
     status: { type: String, enum: ['Paid', 'Pending', 'Cancelled', 'Returned', 'Partial'], default: 'Paid' },
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
   },
