@@ -507,9 +507,10 @@ const getNonMovingStock = async (req, res) => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        // 1. Find all sales in last 30 days
+        // 1. Find all valid sales in last 30 days (exclude cancelled)
         const sales = await Sale.find({
             shopId: req.shop._id,
+            status: { $nin: ['Cancelled'] },
             createdAt: { $gte: thirtyDaysAgo }
         }).select('items.productId');
 
@@ -524,6 +525,7 @@ const getNonMovingStock = async (req, res) => {
         // 3. Find products NOT in sold list (and have stock > 0) AND were created > 30 days ago
         const nonMovingProducts = await Product.find({
             shopId: req.shop._id,
+            status: 'Active',
             quantity: { $gt: 0 },
             _id: { $nin: Array.from(soldProductIds) },
             createdAt: { $lte: thirtyDaysAgo } // Strict check: Must be older than 30 days

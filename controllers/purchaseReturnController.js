@@ -111,9 +111,9 @@ const getPurchaseReturns = async (req, res) => {
 const getPurchaseReturnById = async (req, res) => {
     try {
         const purchaseReturn = await PurchaseReturn.findOne({ _id: req.params.id, shopId: req.shop._id })
-            .populate('supplierId', 'name phone gstNumber address')
+            .populate('supplierId', 'name phone gstNumber address drugLicenseNumber')
             .populate('purchaseId', 'invoiceNumber')
-            .populate('items.productId', 'name');
+            .populate('items.productId', 'name sku batchNumber tax mrp');
 
         if (purchaseReturn) {
             res.json({ success: true, purchaseReturn });

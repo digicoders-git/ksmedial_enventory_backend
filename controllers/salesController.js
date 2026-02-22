@@ -81,10 +81,11 @@ const createSale = async (req, res) => {
             customerId,
             customerName,
             items,
-            subTotal,
+            subTotal: subTotal || 0,
             taxAmount: tax || 0,
             discountAmount: discount || 0,
             totalAmount, 
+            amountPaid: Number(amountPaid) || (status === 'Paid' ? totalAmount : 0),
             paymentMethod,
             status: status || 'Paid',
             shopId: req.shop._id,
@@ -94,7 +95,25 @@ const createSale = async (req, res) => {
 
         const createdSale = await sale.save();
 
-        // 4. Update Stock (Deduct Tablets)
+        // 4. Update Customer Stats if registered
+        if (customerId) {
+            const customerDoc = await Customer.findById(customerId);
+            if (customerDoc) {
+                // Total Orders increase by units (or counts? User said "0 Units" in orders, so usually sum of quantities)
+                const unitsInThisSale = items.reduce((acc, item) => acc + (Number(item.quantity) || 0), 0);
+                
+                customerDoc.totalOrders = (customerDoc.totalOrders || 0) + unitsInThisSale;
+                customerDoc.totalSpent = (customerDoc.totalSpent || 0) + totalAmount;
+                
+                // Pending Amount calculation
+                const dueFromThisSale = totalAmount - (Number(amountPaid) || (status === 'Paid' ? totalAmount : 0));
+                customerDoc.pendingAmount = (customerDoc.pendingAmount || 0) + dueFromThisSale;
+                
+                await customerDoc.save();
+            }
+        }
+
+        // 5. Update Stock (Deduct Tablets)
         for (const item of items) {
             const product = await Product.findById(item.productId);
             const packSize = getPackSize(product.packing);

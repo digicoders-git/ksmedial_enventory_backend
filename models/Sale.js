@@ -30,6 +30,7 @@ const saleSchema = new mongoose.Schema(
         isColdStorage: { type: Boolean, default: false }
      },
      totalAmount: { type: Number, required: true },
+     amountPaid: { type: Number, default: 0 },
      subTotal: { type: Number, default: 0 },
      taxAmount: { type: Number, default: 0 },
      discountAmount: { type: Number, default: 0 },
