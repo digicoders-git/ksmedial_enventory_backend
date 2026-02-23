@@ -16,14 +16,20 @@ const getPackSize = (packingStr) => {
 // @access  Private
 const createSaleReturn = async (req, res) => {
     try {
-        const data = req.body || {};
-        const {
-            saleId,
-            items,
-            totalAmount,
-            reason,
-            status
-        } = data;
+        const reqBody = req.body || {};
+
+        const saleId = reqBody.saleId;
+        const totalAmount = reqBody.totalAmount;
+        const reason = reqBody.reason;
+        const status = reqBody.status;
+
+        let items = [];
+        try {
+            const itemsRaw = reqBody.items;
+            items = typeof itemsRaw === 'string' ? JSON.parse(itemsRaw) : (itemsRaw || []);
+        } catch (e) {
+            return res.status(400).json({ success: false, message: 'Invalid items format' });
+        }
 
         const sale = await Sale.findById(saleId);
         if (!sale) {
@@ -34,6 +40,12 @@ const createSaleReturn = async (req, res) => {
         const count = await SaleReturn.countDocuments({ shopId: req.shop._id });
         const returnNumber = `RET-${Date.now()}-${count + 1}`;
 
+        // Handle uploaded invoice file
+        let invoiceFile = null;
+        if (req.file) {
+            invoiceFile = `/uploads/${req.file.filename}`;
+        }
+
         const saleReturn = new SaleReturn({
             returnNumber,
             saleId,
@@ -41,16 +53,17 @@ const createSaleReturn = async (req, res) => {
             customerId: sale.customerId,
             customerName: sale.customerName,
             items,
-            totalAmount,
+            totalAmount: Number(totalAmount) || 0,
             reason,
             status: status || 'Putaway_Pending',
-            shopId: req.shop._id
+            shopId: req.shop._id,
+            invoiceFile
         });
 
         const createdReturn = await saleReturn.save();
 
         // Smarter Sale status update
-        sale.returnedAmount = (sale.returnedAmount || 0) + totalAmount;
+        sale.returnedAmount = (sale.returnedAmount || 0) + Number(totalAmount);
         
         // Calculate total original qty
         const totalOriginalQty = sale.items.reduce((acc, i) => acc + i.quantity, 0);
@@ -70,6 +83,7 @@ const createSaleReturn = async (req, res) => {
 
         res.status(201).json({ success: true, saleReturn: createdReturn });
     } catch (error) {
+        console.error('CREATE SALE RETURN ERROR:', error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 };

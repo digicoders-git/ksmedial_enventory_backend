@@ -19,6 +19,7 @@ const saleReturnSchema = new mongoose.Schema(
     reason: { type: String },
     status: { type: String, enum: ['Refunded', 'Credit', 'Pending', 'Putaway_Pending'], default: 'Refunded' },
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
+    invoiceFile: { type: String, default: null },
   },
   { timestamps: true }
 );
