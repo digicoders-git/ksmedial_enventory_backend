@@ -39,7 +39,7 @@ router.route('/')
 
 router.route('/:id')
     .get(getPurchaseReturnById)
-    .put(updatePurchaseReturn)
+    .put(uploadInvoice, updatePurchaseReturn)
     .delete(deletePurchaseReturn);
 
 module.exports = router;

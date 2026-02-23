@@ -163,9 +163,16 @@ const getPurchaseReturnById = async (req, res) => {
 // UPDATE PURCHASE RETURN (status / reason)
 const updatePurchaseReturn = async (req, res) => {
     try {
+        const updateData = { ...req.body };
+        
+        // Handle physical file if uploaded via Multer
+        if (req.file) {
+            updateData.invoiceFile = `/uploads/${req.file.filename}`;
+        }
+
         const pr = await PurchaseReturn.findOneAndUpdate(
             { _id: req.params.id, shopId: req.shop._id },
-            req.body,
+            updateData,
             { new: true }
         );
 
