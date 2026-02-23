@@ -163,10 +163,14 @@ const getPurchaseReturnById = async (req, res) => {
 // UPDATE PURCHASE RETURN (status / reason)
 const updatePurchaseReturn = async (req, res) => {
     try {
+        console.log("UPDATE PURCHASE RETURN CALLED:", req.params.id);
+        console.log("UPDATE DATA RECEIVED:", req.body);
+        
         const updateData = { ...req.body };
         
         // Handle physical file if uploaded via Multer
         if (req.file) {
+            console.log("NEW FILE RECEIVED:", req.file.filename);
             updateData.invoiceFile = `/uploads/${req.file.filename}`;
         }
 
