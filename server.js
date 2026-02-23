@@ -1,3 +1,4 @@
+// Server Entry Point - Updated
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -52,6 +53,11 @@ const supplierRoutes = require('./routes/supplierRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const unitRoutes = require('./routes/unitRoutes');
 const prescriptionRoutes = require('./routes/prescriptionRoutes');
+
+app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url}`);
+    next();
+});
 
 // Routes
 app.use('/api/auth', authRoutes);

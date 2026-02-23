@@ -9,6 +9,7 @@ const mongoose = require('mongoose');
 // @access  Private
 const createGRN = async (req, res) => {
     try {
+        const data = req.body || {};
         const {
             purchaseId,
             supplierId,
@@ -17,7 +18,7 @@ const createGRN = async (req, res) => {
             items,
             remarks,
             receivedBy
-        } = req.body;
+        } = data;
 
         if (!items || items.length === 0) {
             return res.status(400).json({ success: false, message: 'No items in GRN' });

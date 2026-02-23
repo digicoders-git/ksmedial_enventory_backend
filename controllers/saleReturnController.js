@@ -16,13 +16,14 @@ const getPackSize = (packingStr) => {
 // @access  Private
 const createSaleReturn = async (req, res) => {
     try {
+        const data = req.body || {};
         const {
             saleId,
             items,
             totalAmount,
             reason,
             status
-        } = req.body;
+        } = data;
 
         const sale = await Sale.findById(saleId);
         if (!sale) {
