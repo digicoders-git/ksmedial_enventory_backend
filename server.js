@@ -33,6 +33,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const path = require('path');
 const uploadsDir = path.resolve('uploads');
 app.use('/uploads', express.static(uploadsDir));
+app.use('/api/uploads', express.static(uploadsDir));
 
 // Basic Route
 app.get('/', (req, res) => {

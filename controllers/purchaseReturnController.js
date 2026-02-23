@@ -1,6 +1,14 @@
 const PurchaseReturn = require('../models/PurchaseReturn');
 const Purchase = require('../models/Purchase');
 const Product = require('../models/Product');
+const Supplier = require('../models/Supplier');
+
+// Helper to extract pack size (e.g. "1x10" -> 10)
+const getPackSize = (packingStr) => {
+    if (!packingStr) return 1;
+    const match = packingStr.toString().match(/(\d+)$/);
+    return match ? parseInt(match[0]) : 1;
+};
 
 // CREATE PURCHASE RETURN (Debit Note)
 const createPurchaseReturn = async (req, res) => {
@@ -53,9 +61,14 @@ const createPurchaseReturn = async (req, res) => {
         // Deduct stock for each returned item
         for (const item of items) {
             if (item.productId) {
-                await Product.findByIdAndUpdate(item.productId, {
-                    $inc: { quantity: -(Number(item.returnQuantity) || 0) }
-                });
+                const product = await Product.findById(item.productId);
+                if (product) {
+                    const packSize = getPackSize(product.packing);
+                    const returnQtyInUnits = (Number(item.returnQuantity) || 0) * packSize;
+                    
+                    product.quantity = (product.quantity || 0) - returnQtyInUnits;
+                    await product.save();
+                }
             }
         }
 
