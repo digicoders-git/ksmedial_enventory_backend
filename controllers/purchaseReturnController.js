@@ -2,23 +2,39 @@ const PurchaseReturn = require('../models/PurchaseReturn');
 const Purchase = require('../models/Purchase');
 const Product = require('../models/Product');
 
-// @desc    Create new purchase return
-// @route   POST /api/purchase-returns
-// @access  Private
+// CREATE PURCHASE RETURN (Debit Note)
 const createPurchaseReturn = async (req, res) => {
     try {
-        console.log("Create Purchase Return Request Body:", req.body);
-        const {
-            purchaseId,
-            supplierId,
-            items,
-            totalAmount,
-            reason,
-            returnNumber
-        } = req.body;
+        const reqBody = req.body || {};
+
+        const returnNumber = reqBody.returnNumber || `DN-${Date.now()}`;
+        const purchaseId = reqBody.purchaseId;
+        const supplierId = reqBody.supplierId;
+        const itemsRaw = reqBody.items;
+        const totalAmount = reqBody.totalAmount;
+        const reason = reqBody.reason;
+
+        if (!purchaseId || !supplierId) {
+            return res.status(400).json({
+                success: false,
+                message: "Purchase ID or Supplier ID is missing from the request."
+            });
+        }
+
+        let items = [];
+        try {
+            items = typeof itemsRaw === 'string' ? JSON.parse(itemsRaw) : (itemsRaw || []);
+        } catch (e) {
+            return res.status(400).json({ success: false, message: "Invalid items format" });
+        }
 
         if (!items || items.length === 0) {
-            return res.status(400).json({ success: false, message: "No items to return" });
+            return res.status(400).json({ success: false, message: "No items provided for return." });
+        }
+
+        let invoiceFile = null;
+        if (req.file) {
+            invoiceFile = `/uploads/${req.file.filename}`;
         }
 
         const purchaseReturn = new PurchaseReturn({
@@ -26,171 +42,154 @@ const createPurchaseReturn = async (req, res) => {
             purchaseId,
             supplierId,
             items,
-            totalAmount,
+            totalAmount: Number(totalAmount) || 0,
             reason,
-            shopId: req.shop._id
+            shopId: req.shop._id,
+            invoiceFile: invoiceFile
         });
 
         const createdReturn = await purchaseReturn.save();
-        console.log("Purchase Return Saved:", createdReturn);
 
-        // Update Product Stock (Decrease quantity as it is returned)
+        // Deduct stock for each returned item
         for (const item of items) {
-            if (!item.productId) continue;
-            
-            const product = await Product.findById(item.productId);
-            if (product) {
-                const returnQty = Number(item.returnQuantity) || 0;
-                product.quantity = (product.quantity || 0) - returnQty; 
-                await product.save();
-                console.log(`Updated stock for product ${item.productId}: -${returnQty}`);
-            } else {
-                console.warn(`Product not found for stock update: ${item.productId}`);
+            if (item.productId) {
+                await Product.findByIdAndUpdate(item.productId, {
+                    $inc: { quantity: -(Number(item.returnQuantity) || 0) }
+                });
             }
         }
 
         res.status(201).json({ success: true, purchaseReturn: createdReturn });
+
     } catch (error) {
-        console.error("Create Purchase Return Error:", error);
-        res.status(500).json({ 
-            success: false, 
-            message: error.message || "Failed to create return",
-            details: error.errors ? Object.values(error.errors).map(e => e.message) : undefined
-        });
+        console.error("CREATE PURCHASE RETURN ERROR:", error.message);
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// @desc    Get all purchase returns
-// @route   GET /api/purchase-returns
-// @access  Private
+// GET ALL PURCHASE RETURNS (with pagination, search, date filter, and stats)
 const getPurchaseReturns = async (req, res) => {
     try {
-        const pageSize = 10;
-        const page = Number(req.query.pageNumber) || 1;
-        
+        const pageNumber = Number(req.query.pageNumber) || 1;
+        const pageSize = Number(req.query.pageSize) || 10;
+        const keyword = req.query.keyword || '';
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+
         const query = { shopId: req.shop._id };
-        
-        if (req.query.keyword) {
-            query.returnNumber = { $regex: req.query.keyword, $options: 'i' };
+
+        // Date range filter
+        if (startDate || endDate) {
+            query.returnDate = {};
+            if (startDate) query.returnDate.$gte = new Date(startDate);
+            if (endDate) query.returnDate.$lte = new Date(endDate);
         }
 
-        const count = await PurchaseReturn.countDocuments(query);
+        // We'll filter by returnNumber keyword after populate if needed
+        // For now, use a regex on returnNumber if keyword is provided
+        if (keyword) {
+            query.$or = [
+                { returnNumber: { $regex: keyword, $options: 'i' } }
+            ];
+        }
+
+        const total = await PurchaseReturn.countDocuments(query);
+        const pages = Math.ceil(total / pageSize) || 1;
+
         const returns = await PurchaseReturn.find(query)
             .populate('supplierId', 'name phone gstNumber address')
             .populate('purchaseId', 'invoiceNumber')
             .populate('items.productId', 'name batchNumber sku')
             .sort({ createdAt: -1 })
             .limit(pageSize)
-            .skip(pageSize * (page - 1));
+            .skip(pageSize * (pageNumber - 1));
 
-        // Get stats for all returns in the shop
-        const allReturns = await PurchaseReturn.find({ shopId: req.shop._id });
-        const totalReturnsAmount = allReturns.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
-        const pendingAdjustmentCount = allReturns.filter(r => r.status === 'Pending').length;
+        // Calculate stats
+        const allReturnsForStats = await PurchaseReturn.find({ shopId: req.shop._id });
+        const totalReturnsAmount = allReturnsForStats.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
+        const pendingAdjustmentCount = allReturnsForStats.filter(r => r.status === 'Pending').length;
+        const totalReturns = allReturnsForStats.length;
 
-        res.json({ 
-            success: true, 
-            returns, 
-            page, 
-            pages: Math.ceil(count / pageSize), 
-            total: count,
+        res.json({
+            success: true,
+            returns,
+            pages,
+            total,
+            page: pageNumber,
             stats: {
                 totalReturnsAmount,
                 pendingAdjustmentCount,
-                totalReturns: allReturns.length
+                totalReturns
             }
         });
     } catch (error) {
+        console.error("GET PURCHASE RETURNS ERROR:", error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// @desc    Get purchase return by ID
-// @route   GET /api/purchase-returns/:id
-// @access  Private
+// GET SINGLE PURCHASE RETURN BY ID
 const getPurchaseReturnById = async (req, res) => {
     try {
-        const purchaseReturn = await PurchaseReturn.findOne({ _id: req.params.id, shopId: req.shop._id })
-            .populate('supplierId', 'name phone gstNumber address drugLicenseNumber')
-            .populate('purchaseId', 'invoiceNumber')
-            .populate('items.productId', 'name sku batchNumber tax mrp');
+        const pr = await PurchaseReturn.findOne({ _id: req.params.id, shopId: req.shop._id })
+            .populate('supplierId')
+            .populate('purchaseId')
+            .populate('items.productId');
 
-        if (purchaseReturn) {
-            res.json({ success: true, purchaseReturn });
-        } else {
-            res.status(404).json({ success: false, message: 'Purchase return not found' });
+        if (!pr) {
+            return res.status(404).json({ success: false, message: 'Purchase return not found' });
         }
+
+        res.json({ success: true, purchaseReturn: pr });
     } catch (error) {
+        console.error("GET PURCHASE RETURN BY ID ERROR:", error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// @desc    Update purchase return
-// @route   PUT /api/purchase-returns/:id
-// @access  Private
+// UPDATE PURCHASE RETURN (status / reason)
 const updatePurchaseReturn = async (req, res) => {
     try {
-        const { status, reason } = req.body;
-        const purchaseReturn = await PurchaseReturn.findOne({ _id: req.params.id, shopId: req.shop._id });
+        const pr = await PurchaseReturn.findOneAndUpdate(
+            { _id: req.params.id, shopId: req.shop._id },
+            req.body,
+            { new: true }
+        );
 
-        if (purchaseReturn) {
-            purchaseReturn.status = status || purchaseReturn.status;
-            purchaseReturn.reason = reason || purchaseReturn.reason;
-
-            const updatedReturn = await purchaseReturn.save();
-            res.json({ success: true, purchaseReturn: updatedReturn });
-        } else {
-            res.status(404).json({ success: false, message: 'Purchase return not found' });
+        if (!pr) {
+            return res.status(404).json({ success: false, message: 'Purchase return not found' });
         }
+
+        res.json({ success: true, purchaseReturn: pr });
     } catch (error) {
+        console.error("UPDATE PURCHASE RETURN ERROR:", error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// @desc    Delete purchase return
-// @route   DELETE /api/purchase-returns/:id
-// @access  Private
+// DELETE PURCHASE RETURN
 const deletePurchaseReturn = async (req, res) => {
     try {
-        const purchaseReturn = await PurchaseReturn.findOne({ _id: req.params.id, shopId: req.shop._id });
+        const pr = await PurchaseReturn.findOneAndDelete({ _id: req.params.id, shopId: req.shop._id });
 
-        if (purchaseReturn) {
-            // Restore stock if needed? Usually deleting a return might need restoring stock
-            for (const item of purchaseReturn.items) {
-                const product = await Product.findById(item.productId);
-                if (product) {
-                    product.quantity = (product.quantity || 0) + Number(item.returnQuantity);
-                    await product.save();
-                }
-            }
-            await PurchaseReturn.deleteOne({ _id: req.params.id });
-            res.json({ success: true, message: 'Purchase return removed' });
-        } else {
-            res.status(404).json({ success: false, message: 'Purchase return not found' });
+        if (!pr) {
+            return res.status(404).json({ success: false, message: 'Purchase return not found' });
         }
+
+        res.json({ success: true, message: 'Deleted successfully' });
     } catch (error) {
+        console.error("DELETE PURCHASE RETURN ERROR:", error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
+// CLEAR ALL PURCHASE RETURNS (for this shop)
 const clearAllPurchaseReturns = async (req, res) => {
     try {
-        const returns = await PurchaseReturn.find({ shopId: req.shop._id });
-        
-        // Restore stock for each return
-        for (const pr of returns) {
-            for (const item of pr.items) {
-                const product = await Product.findById(item.productId);
-                if (product) {
-                    product.quantity = (product.quantity || 0) + Number(item.returnQuantity || item.quantity);
-                    await product.save();
-                }
-            }
-        }
-        
         await PurchaseReturn.deleteMany({ shopId: req.shop._id });
-        res.json({ success: true, message: 'All purchase returns cleared and stock restored' });
+        res.json({ success: true, message: 'All purchase returns cleared' });
     } catch (error) {
+        console.error("CLEAR ALL PURCHASE RETURNS ERROR:", error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 };
