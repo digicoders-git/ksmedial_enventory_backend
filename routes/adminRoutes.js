@@ -1,15 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const upload = require('../middleware/uploadMiddleware');
+const { protectAdmin } = require('../middleware/authMiddleware');
 const { 
     adminLogin, 
+    createAdmin,
     getAdminStats, 
     getOrders, 
     updateOrderStatus, 
-    getAdminProducts, // Changed from getProducts
-    createAdminProduct, // Added
-    updateAdminProduct, // Added
-    deleteAdminProduct, // Added
+    getAdminProducts, 
+    createAdminProduct,
+    updateAdminProduct,
+    deleteAdminProduct,
+    bulkUploadAdminProduct,
+    downloadSampleCSV,
     getShops,
     createShop,
     updateShop,
@@ -21,11 +25,27 @@ const {
     listOffers,
     createOffer,
     updateOffer,
-    deleteOffer
+    deleteOffer,
+    listSliders, // Added
+    createSlider, // Added
+    updateSlider, // Added
+    deleteSlider, // Added
+    getAllBlogs, // Added
+    createBlog, // Added
+    updateBlog, // Added
+    deleteBlog, // Added
+    likeBlog, // Added
+    listEnquiries, // Added
+    updateEnquiry, // Added
+    deleteEnquiry, // Added
+    changeAdminPassword // Added
 } = require('../controllers/adminController');
 
 // Auth
 router.post('/login', adminLogin);
+router.post('/create', createAdmin);
+router.post('/change-password', protectAdmin, (req, res, next) => { console.log('Change password route hit'); next(); }, changeAdminPassword);
+router.get('/test-admin', (req, res) => res.send('Admin route working'));
 
 // Dashboard
 router.get('/stats', getAdminStats);
@@ -39,6 +59,8 @@ router.get('/products', getAdminProducts);
 router.post('/products', upload.fields([{ name: 'mainImage', maxCount: 1 }, { name: 'galleryImages', maxCount: 10 }]), createAdminProduct);
 router.put('/products/:id', upload.fields([{ name: 'mainImage', maxCount: 1 }, { name: 'galleryImages', maxCount: 10 }]), updateAdminProduct);
 router.delete('/products/:id', deleteAdminProduct);
+router.post('/products/bulk', upload.single('file'), bulkUploadAdminProduct);
+router.get('/products/sample', downloadSampleCSV);
 
 // Shops
 router.get('/shops', getShops);
@@ -57,5 +79,23 @@ router.get('/offers', listOffers);
 router.post('/offers', createOffer);
 router.put('/offers/:id', updateOffer);
 router.delete('/offers/:id', deleteOffer);
+
+// Sliders
+router.get('/sliders', listSliders);
+router.post('/sliders', upload.single('image'), createSlider);
+router.put('/sliders/:id', upload.single('image'), updateSlider);
+router.delete('/sliders/:id', deleteSlider);
+
+// Blogs
+router.get('/blogs', getAllBlogs);
+router.post('/blogs', upload.fields([{ name: 'thumbnailImage', maxCount: 1 }, { name: 'coverImage', maxCount: 1 }]), createBlog);
+router.put('/blogs/:id', upload.fields([{ name: 'thumbnailImage', maxCount: 1 }, { name: 'coverImage', maxCount: 1 }]), updateBlog);
+router.delete('/blogs/:id', deleteBlog);
+router.post('/blogs/like/:id', likeBlog);
+
+// Enquiries
+router.get('/enquiries', listEnquiries);
+router.put('/enquiries/:id', updateEnquiry);
+router.delete('/enquiries/:id', deleteEnquiry);
 
 module.exports = router;

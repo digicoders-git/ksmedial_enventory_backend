@@ -14,8 +14,8 @@ const productSchema = new mongoose.Schema(
     quantity: { type: Number, default: 0 }, // inventory view
     category: { type: String },
     categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
-    sku: { type: String, unique: true },
-    slug: { type: String, unique: true },
+    sku: { type: String, unique: true, sparse: true },
+    slug: { type: String, unique: true, sparse: true },
     reorderLevel: { type: Number, default: 20 },
     packing: { type: String },
     hsnCode: { type: String },

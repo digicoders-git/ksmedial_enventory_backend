@@ -11,6 +11,9 @@ dotenv.config();
 // Connect to Database
 connectDB();
 
+const { protectAdmin } = require('./middleware/authMiddleware');
+const { changeAdminPassword, adminLogin } = require('./controllers/adminController');
+
 const app = express();
 
 // Middleware
@@ -26,8 +29,8 @@ app.use(cors({
 
 
 // Increase payload limit for image uploads and bulk operations
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ limit: '500mb', extended: true }));
 
 // Serve Uploads
 const path = require('path');
@@ -56,9 +59,14 @@ const unitRoutes = require('./routes/unitRoutes');
 const prescriptionRoutes = require('./routes/prescriptionRoutes');
 
 app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url}`);
+    console.log(`Aggressive Logger - ${req.method} ${req.originalUrl}`);
     next();
 });
+
+// MLM Direct Routes (Moved higher for debugging)
+const mlmRoutes = require('./routes/mlmRoutes');
+app.use('/api/mlm', mlmRoutes);
+app.get('/api/mlm-ping', (req, res) => res.json({ status: 'success', message: 'MLM Ping OK' }));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -88,9 +96,15 @@ app.use('/api/packing-materials', require('./routes/packingMaterialRoutes'));
 app.use('/api/locations', require('./routes/locationRoutes'));
 app.use('/api/purchase-orders', require('./routes/purchaseOrderRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.post('/api/admin/change-password', protectAdmin, changeAdminPassword);
+app.post('/admin/change-password', protectAdmin, changeAdminPassword);
+app.post('/api/admin/login', adminLogin);
+app.post('/admin/login', adminLogin);
+app.get('/api/admin/test-admin-direct', (req, res) => res.send('Direct admin route working'));
+app.get('/admin/test-admin-direct', (req, res) => res.send('Direct admin route working (no api)'));
 app.use('/api/kyc', require('./routes/kycRoutes'));
 app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
-app.use('/api/mlm', require('./routes/mlmRoutes'));
+// MLM Routes (Moved up)
 
 // Error Handling Middleware
 app.use(notFound);
@@ -100,4 +114,5 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+// Server force restart
 });

@@ -8,20 +8,75 @@ const Offer = require('../models/Offer'); // Added
 
 const fs = require('fs');
 const path = require('path');
+const Admin = require('../models/Admin');
+const Slider = require('../models/Slider'); 
+const Blog = require('../models/Blog'); // Added
+const Enquiry = require('../models/Enquiry'); // Added
+const jwt = require('jsonwebtoken');
+
+const generateAdminToken = (id) => {
+    return jwt.sign({ id }, process.env.JWT_SECRET, {
+        expiresIn: '30d',
+    });
+};
 
 // @desc    Admin login
 // @route   POST /api/admin/login
 const adminLogin = async (req, res) => {
-    const { adminId, password } = req.body;
-    if (adminId === 'admin' && (password === 'admin123' || password === 'admin')) {
-        res.json({
-            status: 'success',
-            message: 'Login successful',
-            admin: { adminId: 'admin', name: 'KS Global Admin', id: 'global-admin' },
-            token: 'global-admin-token'
-        });
-    } else {
+    try {
+        const { adminId, password } = req.body;
+
+        // 1. Check in Database first
+        const admin = await Admin.findOne({ adminId });
+        if (admin) {
+            const isMatch = await admin.matchPassword(password);
+            if (isMatch) {
+                return res.json({
+                    status: 'success',
+                    message: 'Login successful',
+                    admin: { adminId: admin.adminId, name: admin.name, id: admin._id },
+                    token: generateAdminToken(admin._id)
+                });
+            }
+        }
+
+
         res.status(401).json({ status: 'error', message: 'Invalid admin credentials' });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// @desc    Create new admin
+// @route   POST /api/admin/create
+const createAdmin = async (req, res) => {
+    try {
+        const { name, adminId, password, role } = req.body;
+
+        const adminExists = await Admin.findOne({ adminId });
+        if (adminExists) {
+            return res.status(400).json({ status: 'error', message: 'Admin ID already exists' });
+        }
+
+        const admin = await Admin.create({
+            name,
+            adminId,
+            password,
+            role: role || 'superadmin'
+        });
+
+        res.status(201).json({
+            status: 'success',
+            message: 'Admin created successfully',
+            admin: {
+                id: admin._id,
+                name: admin.name,
+                adminId: admin.adminId,
+                role: admin.role
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
     }
 };
 
@@ -137,7 +192,15 @@ const updateOrderStatus = async (req, res) => {
 // Global Product Management
 const getAdminProducts = async (req, res) => {
     try {
-        const products = await Product.find()
+        const { scope } = req.query;
+        let query = {};
+        
+        // Only filter for global admin products if scope is 'global'
+        if (scope === 'global') {
+            query = { $or: [{ shopId: { $exists: false } }, { shopId: null }] };
+        }
+
+        const products = await Product.find(query)
             .populate('shopId', 'shopName')
             .populate('categoryId', 'name')
             .populate('offerId', 'title code discountType discountValue')
@@ -176,6 +239,15 @@ const createAdminProduct = async (req, res) => {
         const slug = productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
         productData.slug = slug;
 
+        // Auto-generate SKU if not provided
+        if (!productData.sku || productData.sku === "") {
+            productData.sku = 'SKU-' + Date.now() + Math.floor(Math.random() * 1000);
+        }
+
+        // Cleanup empty IDs
+        if (productData.categoryId === "") productData.categoryId = null;
+        if (productData.offerId === "") productData.offerId = null;
+
         const product = await Product.create(productData);
         res.status(201).json({ status: 'success', product });
     } catch (error) {
@@ -210,6 +282,10 @@ const updateAdminProduct = async (req, res) => {
             }
         });
 
+        // Cleanup empty IDs
+        if (productData.categoryId === "") productData.categoryId = null;
+        if (productData.offerId === "") productData.offerId = null;
+
         const product = await Product.findByIdAndUpdate(productId, productData, { new: true });
         res.json({ status: 'success', product });
     } catch (error) {
@@ -224,6 +300,78 @@ const deleteAdminProduct = async (req, res) => {
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
+};
+
+const bulkUploadAdminProduct = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'No file uploaded' });
+        }
+
+        const results = [];
+        const csv = require('csv-parser');
+        const fs = require('fs');
+
+        fs.createReadStream(req.file.path)
+            .pipe(csv())
+            .on('data', (data) => results.push(data))
+            .on('end', async () => {
+                try {
+                    const productsToInsert = [];
+                    for (const row of results) {
+                        const name = row['Name'] || row['name'];
+                        if (!name) continue;
+
+                        let categoryId = null;
+                        const catName = row['Category'] || row['category'] || row['Category Name'];
+                        if (catName) {
+                            const cat = await Category.findOne({ name: new RegExp('^' + catName.trim() + '$', 'i') });
+                            if (cat) categoryId = cat._id;
+                        }
+
+                        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now() + Math.floor(Math.random() * 1000);
+
+                        productsToInsert.push({
+                            name: name.trim(),
+                            description: row['Description'] || row['description'] || '',
+                            about: row['About'] || row['about'] || '',
+                            mrp: parseFloat(row['MRP'] || row['mrp']) || 0,
+                            sellingPrice: parseFloat(row['Selling Price'] || row['Price'] || row['selling_price'] || row['price']) || 0,
+                            purchasePrice: parseFloat(row['Purchase Price'] || row['purchase_price']) || 0,
+                            stock: parseInt(row['Stock'] || row['stock']) || 0,
+                            brand: row['Brand'] || row['brand'] || 'Unbranded',
+                            manufacturer: row['Manufacturer'] || row['manufacturer'] || '',
+                            unit: row['Unit'] || row['unit'] || 'Pcs',
+                            sku: (row['SKU'] || row['sku'] || `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`).trim(),
+                            categoryId: categoryId,
+                            category: catName || 'General',
+                            slug: slug,
+                            status: 'Active'
+                        });
+                    }
+
+                    if (productsToInsert.length > 0) {
+                        await Product.insertMany(productsToInsert);
+                    }
+
+                    if (fs.existsSync(req.file.path)) {
+                        fs.unlinkSync(req.file.path);
+                    }
+                    res.json({ status: 'success', message: `${productsToInsert.length} products uploaded successfully` });
+                } catch (innerError) {
+                    res.status(500).json({ message: innerError.message });
+                }
+            });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const downloadSampleCSV = (req, res) => {
+    const csvContent = "Name,Description,MRP,Selling Price,Purchase Price,Stock,Category,Brand,Unit,Manufacturer,SKU\nSample Product,This is a description,100,80,60,50,Electronics,Samsung,Pcs,Samsung Corp,PROD001";
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=sample_products.csv');
+    res.status(200).send(csvContent);
 };
 
 // Shop Management
@@ -398,6 +546,7 @@ const deleteOffer = async (req, res) => {
 
 module.exports = {
     adminLogin,
+    createAdmin,
     getAdminStats,
     getOrders,
     updateOrderStatus,
@@ -405,6 +554,8 @@ module.exports = {
     createAdminProduct,
     updateAdminProduct,
     deleteAdminProduct,
+    bulkUploadAdminProduct,
+    downloadSampleCSV,
     getShops,
     createShop,
     updateShop,
@@ -462,6 +613,187 @@ module.exports = {
             res.json({ status: 'success', message: 'Category deleted' });
         } catch (error) {
             res.status(500).json({ message: error.message });
+        }
+    },
+    // Slider Management
+    listSliders: async (req, res) => {
+        try {
+            const sliders = await Slider.find().sort({ sortOrder: 1, createdAt: -1 });
+            res.json({ status: 'success', sliders });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    createSlider: async (req, res) => {
+        try {
+            const { title, subtitle, buttonText, linkUrl, sortOrder, isActive } = req.body;
+            let imageData = {};
+            
+            if (req.file) {
+                imageData = {
+                    url: `/uploads/${req.file.filename}`
+                };
+            }
+            
+            const slider = await Slider.create({
+                title, subtitle, buttonText, linkUrl, sortOrder, isActive,
+                image: imageData
+            });
+            
+            res.status(201).json({ status: 'success', slider });
+        } catch (error) {
+            console.error('Create Slider Error:', error);
+            res.status(500).json({ message: error.message });
+        }
+    },
+    updateSlider: async (req, res) => {
+        try {
+            const updateData = { ...req.body };
+            
+            if (req.file) {
+                updateData.image = {
+                    url: `/uploads/${req.file.filename}`
+                };
+            } else {
+                // Remove image from updateData if not providing a new file 
+                // to prevent overwriting existing image with empty/null
+                delete updateData.image; 
+            }
+            
+            const slider = await Slider.findByIdAndUpdate(req.params.id, updateData, { new: true });
+            res.json({ status: 'success', slider });
+        } catch (error) {
+            console.error('Update Slider Error:', error);
+            res.status(500).json({ message: error.message });
+        }
+    },
+    deleteSlider: async (req, res) => {
+        try {
+            await Slider.findByIdAndDelete(req.params.id);
+            res.json({ status: 'success', message: 'Slider deleted successfully' });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    // Blog Management
+    getAllBlogs: async (req, res) => {
+        try {
+            const blogs = await Blog.find().sort({ createdAt: -1 });
+            res.json({ status: 'success', blogs });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    createBlog: async (req, res) => {
+        try {
+            const blogData = { ...req.body };
+            
+            // Handle file uploads
+            if (req.files) {
+                if (req.files.thumbnailImage) {
+                    blogData.thumbnailImage = `/uploads/${req.files.thumbnailImage[0].filename}`;
+                }
+                if (req.files.coverImage) {
+                    blogData.coverImage = `/uploads/${req.files.coverImage[0].filename}`;
+                }
+            }
+
+            if (!blogData.slug && blogData.title) {
+                blogData.slug = blogData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+            }
+            const blog = await Blog.create(blogData);
+            res.status(201).json({ status: 'success', blog });
+        } catch (error) {
+            console.error('Create Blog Error:', error);
+            res.status(500).json({ message: error.message });
+        }
+    },
+    updateBlog: async (req, res) => {
+        try {
+            const blogData = { ...req.body };
+            
+            // Handle file uploads
+            if (req.files) {
+                if (req.files.thumbnailImage) {
+                    blogData.thumbnailImage = `/uploads/${req.files.thumbnailImage[0].filename}`;
+                }
+                if (req.files.coverImage) {
+                    blogData.coverImage = `/uploads/${req.files.coverImage[0].filename}`;
+                }
+            }
+
+            const blog = await Blog.findByIdAndUpdate(req.params.id, blogData, { new: true });
+            res.json({ status: 'success', blog });
+        } catch (error) {
+            console.error('Update Blog Error:', error);
+            res.status(500).json({ message: error.message });
+        }
+    },
+    deleteBlog: async (req, res) => {
+        try {
+            await Blog.findByIdAndDelete(req.params.id);
+            res.json({ status: 'success', message: 'Blog deleted' });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    likeBlog: async (req, res) => {
+        try {
+            const blog = await Blog.findOneAndUpdate(
+                { $or: [{ _id: req.params.id }, { slug: req.params.id }] },
+                { $inc: { likes: 1 } },
+                { new: true }
+            );
+            res.json({ status: 'success', likes: blog.likes });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    // Enquiry Management
+    listEnquiries: async (req, res) => {
+        try {
+            const enquiries = await Enquiry.find().sort({ createdAt: -1 });
+            res.json({ status: 'success', enquiries });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    updateEnquiry: async (req, res) => {
+        try {
+            const enquiry = await Enquiry.findByIdAndUpdate(req.params.id, req.body, { new: true });
+            res.json({ status: 'success', enquiry });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    deleteEnquiry: async (req, res) => {
+        try {
+            await Enquiry.findByIdAndDelete(req.params.id);
+            res.json({ status: 'success', message: 'Enquiry deleted' });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
+    changeAdminPassword: async (req, res) => {
+        try {
+            const { currentPassword, newPassword } = req.body;
+            const admin = await Admin.findById(req.admin._id);
+
+            if (!admin) {
+                return res.status(404).json({ status: 'error', message: 'Admin not found' });
+            }
+
+            const isMatch = await admin.matchPassword(currentPassword);
+            if (!isMatch) {
+                return res.status(400).json({ status: 'error', message: 'Invalid current password' });
+            }
+
+            admin.password = newPassword;
+            await admin.save();
+
+            res.json({ status: 'success', message: 'Password updated successfully' });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
         }
     }
 };

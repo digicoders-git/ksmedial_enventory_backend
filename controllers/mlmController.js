@@ -7,8 +7,8 @@ const getMLMStats = async (req, res) => {
     try {
         const { userId } = req.params;
         
-        // If "global-admin", we show system-wide stats
-        if (userId === 'global-admin' || !userId) {
+        // If "global-admin" or invalid ID string from frontend, we show system-wide stats
+        if (!userId || userId === 'global-admin' || userId === 'undefined' || userId === 'null') {
             const totalUsers = await User.countDocuments();
             const totalCommissions = await Commission.aggregate([
                 { $group: { _id: null, total: { $sum: "$amount" } } }
@@ -17,18 +17,46 @@ const getMLMStats = async (req, res) => {
                 { $match: { status: 'completed' } },
                 { $group: { _id: null, total: { $sum: "$amount" } } }
             ]);
+            const totalWalletBalance = await User.aggregate([
+                { $group: { _id: null, total: { $sum: "$walletBalance" } } }
+            ]);
+
+            const startOfMonth = new Date();
+            startOfMonth.setDate(1);
+            startOfMonth.setHours(0,0,0,0);
+            const globalMonthlyEarnings = await Commission.aggregate([
+                { $match: { createdAt: { $gte: startOfMonth } } },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
+            ]);
+
+            const recentGlobalCommissions = await Commission.find()
+                .populate('userId', 'firstName lastName')
+                .populate('fromUserId', 'firstName lastName')
+                .sort({ createdAt: -1 })
+                .limit(10);
+
+            const level1Users = await User.find({ referredBy: { $exists: false } }).select('_id');
+            const level1Ids = level1Users.map(u => u._id);
+            const level2Users = await User.find({ referredBy: { $in: level1Ids } }).select('_id');
+            const level2Ids = level2Users.map(u => u._id);
+            const level3Users = await User.find({ referredBy: { $in: level2Ids } }).select('_id');
 
             return res.json({
-                referralCode: "ADMIN",
-                totalReferrals: totalUsers - 1,
+                referralCode: "GLOBAL ADMIN",
+                totalReferrals: totalUsers,
                 activeReferrals: await User.countDocuments({ isActive: true }),
                 totalEarnings: totalCommissions[0]?.total || 0,
-                availableBalance: (totalCommissions[0]?.total || 0) - (totalWithdrawals[0]?.total || 0),
-                monthlyEarnings: 0, // Simplified for now
-                level1Referrals: 0,
-                level2Referrals: 0,
-                level3Referrals: 0,
-                recentTransactions: []
+                availableBalance: totalWalletBalance[0]?.total || 0,
+                monthlyEarnings: globalMonthlyEarnings[0]?.total || 0,
+                level1Referrals: level1Users.length,
+                level2Referrals: level2Users.length,
+                level3Referrals: level3Users.length,
+                recentTransactions: recentGlobalCommissions.map(c => ({
+                    id: c._id,
+                    description: `${c.userId?.firstName || 'User'} earned L${c.level} from ${c.fromUserId?.firstName || 'sub'}`,
+                    date: c.createdAt.toISOString().split('T')[0],
+                    amount: c.amount
+                }))
             });
         }
 
@@ -84,10 +112,12 @@ const getReferrals = async (req, res) => {
     try {
         const { userId } = req.params;
         
-        // If global-admin or invalid ID, we could show all users or none. 
-        // Showing all users for admin view.
-        if (userId === 'global-admin' || !mongoose.Types.ObjectId.isValid(userId)) {
-           const allUsers = await User.find().select('firstName lastName email phone isActive createdAt totalEarnings');
+        // If global-admin or invalid ID, show all users for admin view.
+        if (!userId || userId === 'global-admin' || userId === 'undefined' || userId === 'null' || !mongoose.Types.ObjectId.isValid(userId)) {
+           const allUsers = await User.find()
+                .populate('referredBy', 'firstName lastName')
+                .select('firstName lastName email phone isActive createdAt totalEarnings referredBy referralCode')
+                .sort({ createdAt: -1 });
            return res.json(allUsers);
         }
 
