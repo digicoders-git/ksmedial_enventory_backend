@@ -195,9 +195,13 @@ const getAdminProducts = async (req, res) => {
         const { scope } = req.query;
         let query = {};
         
-        // Only filter for global admin products if scope is 'global'
+        // Filters:
+        // 'global': only products with no shop (Catalog)
+        // 'inventory': only products belonging to a shop (Actual Stock)
         if (scope === 'global') {
             query = { $or: [{ shopId: { $exists: false } }, { shopId: null }] };
+        } else if (scope === 'inventory') {
+            query = { shopId: { $ne: null, $exists: true } };
         }
 
         const products = await Product.find(query)
@@ -468,6 +472,17 @@ const getKYCStats = async (req, res) => {
     }
 };
 
+const submitKYC = async (req, res) => {
+    try {
+        const kycData = req.body;
+        kycData.submitDate = new Date().toLocaleDateString('en-IN');
+        const kyc = await KYC.create(kycData);
+        res.status(201).json({ success: true, message: 'KYC submitted successfully', data: kyc });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // Withdrawal Management
 const Withdrawal = require('../models/Withdrawal');
 const getAllWithdrawals = async (req, res) => {
@@ -568,6 +583,7 @@ module.exports = {
     getAllWithdrawals,
     updateWithdrawalStatus,
     getWithdrawalStats,
+    submitKYC,
     // Offer Management
     listOffers,
     createOffer,

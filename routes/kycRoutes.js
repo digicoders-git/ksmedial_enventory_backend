@@ -5,10 +5,12 @@ const {
     getKYCById, 
     approveKYC, 
     rejectKYC, 
-    getKYCStats 
+    getKYCStats,
+    submitKYC 
 } = require('../controllers/adminController');
 
 router.get('/all', getAllKYC);
+router.post('/submit', submitKYC);
 router.get('/stats', getKYCStats);
 router.get('/:id', getKYCById);
 router.post('/approve/:id', approveKYC);
