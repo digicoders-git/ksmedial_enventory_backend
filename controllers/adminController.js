@@ -180,6 +180,38 @@ const getOrders = async (req, res) => {
     }
 };
 
+const createAdminOrder = async (req, res) => {
+    try {
+        const { userId, items, shippingAddress, paymentMethod, shopId, notes } = req.body;
+        
+        // Calculate subtotal/total
+        let subtotal = 0;
+        items.forEach(item => {
+            subtotal += (item.productPrice * item.quantity);
+        });
+        
+        const orderNumber = `ORD-ADM-${Date.now()}`;
+        
+        const order = new Order({
+            userId,
+            orderNumber,
+            items,
+            subtotal,
+            total: subtotal, // For now, ignoring discount
+            shippingAddress,
+            paymentMethod: paymentMethod || 'COD',
+            shopId,
+            notes,
+            status: 'pending'
+        });
+        
+        await order.save();
+        res.status(201).json({ success: true, order });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 const updateOrderStatus = async (req, res) => {
     try {
         const order = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -564,6 +596,7 @@ module.exports = {
     createAdmin,
     getAdminStats,
     getOrders,
+    createAdminOrder,
     updateOrderStatus,
     getAdminProducts,
     createAdminProduct,

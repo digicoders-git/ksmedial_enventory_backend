@@ -7,6 +7,7 @@ const {
     createAdmin,
     getAdminStats, 
     getOrders, 
+    createAdminOrder,
     updateOrderStatus, 
     getAdminProducts, 
     createAdminProduct,
@@ -52,6 +53,7 @@ router.get('/stats', getAdminStats);
 
 // Orders
 router.get('/orders', getOrders);
+router.post('/orders', createAdminOrder);
 router.put('/orders/:id/status', updateOrderStatus);
 
 // Products
