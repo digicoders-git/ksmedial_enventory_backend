@@ -1,6 +1,98 @@
+const User = require('../models/User');
 const Shop = require('../models/Shop');
 const jwt = require('jsonwebtoken');
 const { logActivity } = require('./activityController');
+
+// @desc    Register a new user
+// @route   POST /api/auth/register
+// @access  Public
+const registerUser = async (req, res) => {
+    try {
+        const { firstName, lastName, email, phone, password, referralCode } = req.body;
+
+        const userExists = await User.findOne({ $or: [{ email }, { phone }] });
+
+        if (userExists) {
+            return res.status(400).json({ message: 'User already exists with this email or phone' });
+        }
+
+        let referredBy = null;
+        if (referralCode) {
+            const referrer = await User.findOne({ referralCode });
+            if (referrer) {
+                referredBy = referrer._id;
+            }
+        }
+
+        // Generate a unique referral code for the new user
+        const newReferralCode = `KS${phone.slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+
+        const user = await User.create({
+            firstName,
+            lastName,
+            email,
+            phone,
+            password, // Storing plain as per project pattern
+            referralCode: newReferralCode,
+            referredBy
+        });
+
+        if (user) {
+            res.status(201).json({
+                user: {
+                    _id: user._id,
+                    name: user.name,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    email: user.email,
+                    phone: user.phone,
+                    referralCode: user.referralCode,
+                    walletBalance: user.walletBalance
+                },
+                token: generateToken(user._id),
+                message: 'Registration successful'
+            });
+        } else {
+            res.status(400).json({ message: 'Invalid user data' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Auth user & get token
+// @route   POST /api/auth/user-login
+// @access  Public
+const loginUser = async (req, res) => {
+    try {
+        const { emailOrPhone, password } = req.body;
+
+        const user = await User.findOne({
+            $or: [{ email: emailOrPhone }, { phone: emailOrPhone }]
+        }).select('+password');
+
+        if (user && user.password === password) {
+            res.json({
+                user: {
+                    _id: user._id,
+                    name: user.firstName + ' ' + user.lastName,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    email: user.email,
+                    phone: user.phone,
+                    referralCode: user.referralCode,
+                    walletBalance: user.walletBalance
+                },
+                token: generateToken(user._id),
+                message: 'Login successful'
+            });
+        } else {
+            res.status(401).json({ message: 'Invalid email/phone or password' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
 
 // @desc    Auth shop & get token
 // @route   POST /api/auth/login
@@ -17,7 +109,6 @@ const loginShop = async (req, res) => {
             }
 
             // Log Login Activity
-            // Construct a partial req object since 'protect' middleware hasn't run yet
             const mockReq = { ...req, shop: shop };
             logActivity(mockReq, 'Logged in', 'User logged in successfully', 'Auth');
 
@@ -29,7 +120,7 @@ const loginShop = async (req, res) => {
                     username: shop.username,
                     status: shop.status,
                     city: shop.city,
-                    image: shop.image // Include image in login response
+                    image: shop.image 
                 },
                 token: generateToken(shop._id),
                 message: 'Login successful'
@@ -49,5 +140,7 @@ const generateToken = (id) => {
 };
 
 module.exports = {
-    loginShop
+    loginShop,
+    registerUser,
+    loginUser
 };
