@@ -37,6 +37,7 @@ const {
     deleteBlog, // Added
     likeBlog, // Added
     listEnquiries, // Added
+    createEnquiry, // Added
     updateEnquiry, // Added
     deleteEnquiry, // Added
     changeAdminPassword // Added
@@ -97,6 +98,7 @@ router.post('/blogs/like/:id', likeBlog);
 
 // Enquiries
 router.get('/enquiries', listEnquiries);
+router.post('/enquiries', createEnquiry);
 router.put('/enquiries/:id', updateEnquiry);
 router.delete('/enquiries/:id', deleteEnquiry);
 

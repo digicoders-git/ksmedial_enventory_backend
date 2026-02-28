@@ -807,6 +807,15 @@ module.exports = {
             res.status(500).json({ message: error.message });
         }
     },
+    createEnquiry: async (req, res) => {
+        try {
+            const enquiry = new Enquiry(req.body);
+            await enquiry.save();
+            res.status(201).json({ status: 'success', enquiry });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    },
     updateEnquiry: async (req, res) => {
         try {
             const enquiry = await Enquiry.findByIdAndUpdate(req.params.id, req.body, { new: true });
