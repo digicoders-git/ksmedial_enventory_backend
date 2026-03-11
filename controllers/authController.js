@@ -238,6 +238,42 @@ const getUserProfile = async (req, res) => {
     }
 };
 
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+const updateUserProfile = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+
+        if (user) {
+            user.firstName = req.body.firstName || user.firstName;
+            user.lastName = req.body.lastName || user.lastName;
+            user.email = req.body.email || user.email;
+
+            const updatedUser = await user.save();
+
+            res.json({
+                success: true,
+                user: {
+                    _id: updatedUser._id,
+                    name: updatedUser.firstName + ' ' + updatedUser.lastName,
+                    firstName: updatedUser.firstName,
+                    lastName: updatedUser.lastName,
+                    email: updatedUser.email,
+                    phone: updatedUser.phone,
+                    referralCode: updatedUser.referralCode,
+                    walletBalance: updatedUser.walletBalance
+                },
+                message: 'Profile updated successfully'
+            });
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
         expiresIn: '30d',
@@ -249,6 +285,7 @@ module.exports = {
     registerUser,
     loginUser,
     getUserProfile,
+    updateUserProfile,
     sendOTP,
     verifyOTP
 };
