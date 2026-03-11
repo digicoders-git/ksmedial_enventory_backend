@@ -133,6 +133,37 @@ const loginShop = async (req, res) => {
     }
 };
 
+// @desc    Get user profile
+// @route   GET /api/auth/profile
+// @access  Private
+const getUserProfile = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+
+        if (user) {
+            res.json({
+                user: {
+                    _id: user._id,
+                    name: user.firstName + ' ' + user.lastName,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    email: user.email,
+                    phone: user.phone,
+                    referralCode: user.referralCode,
+                    walletBalance: user.walletBalance,
+                    totalEarnings: user.totalEarnings,
+                    isActive: user.isActive,
+                    createdAt: user.createdAt
+                }
+            });
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
         expiresIn: '30d',
@@ -142,5 +173,6 @@ const generateToken = (id) => {
 module.exports = {
     loginShop,
     registerUser,
-    loginUser
+    loginUser,
+    getUserProfile
 };
