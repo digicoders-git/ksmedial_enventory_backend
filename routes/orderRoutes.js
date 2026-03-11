@@ -1,13 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const { getOrders, getOrderById, updateOrderStatus, createTestOrders } = require('../controllers/orderController');
-const { protect } = require('../middleware/authMiddleware');
+const { 
+    getOrders, 
+    getOrderById, 
+    updateOrderStatus, 
+    createTestOrders,
+    cancelMyOrder 
+} = require('../controllers/orderController');
+const { protect, protectUser } = require('../middleware/authMiddleware');
 
-router.use(protect);
+router.get('/', protect, getOrders);
+router.post('/seed', protect, createTestOrders);
+router.get('/:id', protect, getOrderById);
+router.put('/:id/status', protect, updateOrderStatus);
 
-router.get('/', getOrders);
-router.post('/seed', createTestOrders);
-router.get('/:id', getOrderById);
-router.put('/:id/status', updateOrderStatus);
+// User Side Cancellation
+router.put('/my-orders/:id/cancel', protectUser, cancelMyOrder);
 
 module.exports = router;

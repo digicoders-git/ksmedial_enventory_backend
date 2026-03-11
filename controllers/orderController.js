@@ -204,9 +204,40 @@ const createTestOrders = async (req, res) => {
     }
 };
 
+// @desc    Cancel My Order (User Side)
+// @route   PUT /api/orders/my-orders/:id/cancel
+// @access  Private (User)
+const cancelMyOrder = async (req, res) => {
+    try {
+        const order = await Order.findOne({ _id: req.params.id, userId: req.user._id });
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found or not authorized' });
+        }
+
+        if (order.status !== 'pending') {
+            return res.status(400).json({ success: false, message: `Cannot cancel order with status: ${order.status}` });
+        }
+
+        order.status = 'cancelled';
+        order.problemDescription = 'Cancelled by user';
+        
+        await order.save();
+
+        res.json({
+            success: true,
+            message: 'Order cancelled successfully',
+            order
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getOrders,
     getOrderById,
     updateOrderStatus,
-    createTestOrders
+    createTestOrders,
+    cancelMyOrder
 };
