@@ -248,5 +248,7 @@ module.exports = {
     loginShop,
     registerUser,
     loginUser,
-    getUserProfile
+    getUserProfile,
+    sendOTP,
+    verifyOTP
 };
