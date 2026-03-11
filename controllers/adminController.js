@@ -474,10 +474,60 @@ const getKYCById = async (req, res) => {
     }
 };
 
+const Commission = require('../models/Commission');
+const User = require('../models/User');
+
 const approveKYC = async (req, res) => {
     try {
-        const kyc = await KYC.findByIdAndUpdate(req.params.id, { status: 'approved' }, { new: true });
-        res.json({ success: true, data: kyc });
+        const kyc = await KYC.findById(req.params.id);
+        if (!kyc) {
+            return res.status(404).json({ success: false, message: 'KYC not found' });
+        }
+
+        if (kyc.status === 'approved') {
+            return res.status(400).json({ success: false, message: 'KYC is already approved' });
+        }
+
+        // 1. Update KYC status
+        kyc.status = 'approved';
+        await kyc.save();
+
+        // 2. Commission Logic (Level 1, 2, 3)
+        // Amounts: L1=50, L2=25, L3=15 (Adjustable)
+        const commissionAmounts = [50, 25, 15];
+        const currentUser = await User.findById(kyc.userId);
+        
+        if (currentUser && currentUser.referredBy) {
+            let referrerId = currentUser.referredBy;
+            
+            for (let i = 0; i < 3; i++) {
+                if (!referrerId) break;
+
+                const referrer = await User.findById(referrerId);
+                if (!referrer) break;
+
+                const amount = commissionAmounts[i];
+
+                // Create Commission record
+                await Commission.create({
+                    userId: referrer._id,
+                    fromUserId: currentUser._id,
+                    amount: amount,
+                    level: i + 1,
+                    description: `Commission from ${currentUser.firstName} ${currentUser.lastName} (Level ${i + 1} KYC Approval)`
+                });
+
+                // Update Referrer Balance
+                referrer.walletBalance += amount;
+                referrer.totalEarnings += amount;
+                await referrer.save();
+
+                // Move to next parent
+                referrerId = referrer.referredBy;
+            }
+        }
+
+        res.json({ success: true, message: 'KYC Approved and Commission Distributed', data: kyc });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
