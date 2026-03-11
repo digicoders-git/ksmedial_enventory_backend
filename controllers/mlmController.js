@@ -128,7 +128,48 @@ const getReferrals = async (req, res) => {
     }
 };
 
+const requestWithdrawal = async (req, res) => {
+    try {
+        const { amount, bankDetails } = req.body;
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (amount <= 0) {
+            return res.status(400).json({ success: false, message: 'Amount must be greater than 0' });
+        }
+
+        if (user.walletBalance < amount) {
+            return res.status(400).json({ success: false, message: 'Insufficient wallet balance' });
+        }
+
+        const withdrawal = await Withdrawal.create({
+            userId: user._id,
+            userName: user.firstName + ' ' + user.lastName,
+            amount,
+            accountDetails: JSON.stringify(bankDetails),
+            status: 'pending',
+            date: new Date().toISOString()
+        });
+
+        // Deduct from wallet balance
+        user.walletBalance -= amount;
+        await user.save();
+
+        res.status(201).json({
+            success: true,
+            message: 'Withdrawal request submitted successfully',
+            withdrawal
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getMLMStats,
-    getReferrals
+    getReferrals,
+    requestWithdrawal
 };
