@@ -109,7 +109,14 @@ const getEntries = asyncHandler(async (req, res) => {
 const updateGRNStatus = asyncHandler(async (req, res) => {
     const { grnStatus, grnId, invoiceImageUrl } = req.body;
     
-    const entry = await PhysicalReceiving.findById(req.params.id);
+    let entry;
+    if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+        entry = await PhysicalReceiving.findById(req.params.id);
+    } 
+    
+    if (!entry) {
+        entry = await PhysicalReceiving.findOne({ physicalReceivingId: req.params.id });
+    }
 
     if (entry) {
         entry.grnStatus = grnStatus || 'Done';
@@ -156,7 +163,14 @@ const getEntry = asyncHandler(async (req, res) => {
 const validateEntry = asyncHandler(async (req, res) => {
     const { validatedBy } = req.body;
     
-    const entry = await PhysicalReceiving.findById(req.params.id);
+    let entry;
+    if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+        entry = await PhysicalReceiving.findById(req.params.id);
+    } 
+    
+    if (!entry) {
+        entry = await PhysicalReceiving.findOne({ physicalReceivingId: req.params.id });
+    }
 
     if (entry) {
         entry.status = 'Done';
