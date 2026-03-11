@@ -40,8 +40,12 @@ const {
     createEnquiry, // Added
     updateEnquiry, // Added
     deleteEnquiry, // Added
-    changeAdminPassword // Added
+    changeAdminPassword, // Added
+    getAllAdminCustomers
 } = require('../controllers/adminController');
+
+// Customers (Unified)
+router.get('/customers-all', protectAdmin, getAllAdminCustomers);
 
 // Auth
 router.post('/login', adminLogin);

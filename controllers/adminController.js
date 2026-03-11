@@ -10,8 +10,11 @@ const fs = require('fs');
 const path = require('path');
 const Admin = require('../models/Admin');
 const Slider = require('../models/Slider'); 
-const Blog = require('../models/Blog'); // Added
-const Enquiry = require('../models/Enquiry'); // Added
+const Blog = require('../models/Blog'); 
+const Enquiry = require('../models/Enquiry'); 
+const User = require('../models/User'); // Added
+const Customer = require('../models/Customer'); // Added
+const Commission = require('../models/Commission'); // Added
 const jwt = require('jsonwebtoken');
 
 const generateAdminToken = (id) => {
@@ -474,9 +477,6 @@ const getKYCById = async (req, res) => {
     }
 };
 
-const Commission = require('../models/Commission');
-const User = require('../models/User');
-
 const approveKYC = async (req, res) => {
     try {
         const kyc = await KYC.findById(req.params.id);
@@ -900,6 +900,49 @@ module.exports = {
             await admin.save();
 
             res.json({ status: 'success', message: 'Password updated successfully' });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    },
+    // Customer Management (Unified)
+    getAllAdminCustomers: async (req, res) => {
+        try {
+            // 1. Fetch Users (From Mobile App MLM)
+            const allUsers = await User.find()
+                 .select('firstName lastName email phone isActive createdAt referralCode walletBalance')
+                 .lean();
+ 
+            // 2. Fetch Customers (From Inventory Panel Shops)
+            const allShopCustomers = await Customer.find()
+                 .populate('shopId', 'shopName')
+                 .lean();
+ 
+            // 3. Format Shop Customers to match User schema
+            const shopCustomersFormatted = allShopCustomers.map(cust => ({
+                _id: cust._id,
+                firstName: cust.name,
+                lastName: '(Shop Customer)',
+                email: cust.email || 'N/A',
+                phone: cust.phone,
+                isActive: true,
+                createdAt: cust.createdAt,
+                source: 'Inventory Panel',
+                shopName: cust.shopId?.shopName || 'N/A',
+                type: 'Offline'
+            }));
+ 
+            const usersFormatted = allUsers.map(u => ({
+                ...u,
+                source: 'Mobile App',
+                type: 'Online'
+            }));
+ 
+            // Combine and sort
+            const combinedList = [...usersFormatted, ...shopCustomersFormatted].sort((a, b) => 
+                new Date(b.createdAt) - new Date(a.createdAt)
+            );
+ 
+            res.json({ status: 'success', customers: combinedList });
         } catch (error) {
             res.status(500).json({ status: 'error', message: error.message });
         }
