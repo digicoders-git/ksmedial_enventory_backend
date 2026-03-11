@@ -46,7 +46,25 @@ const toggleWishlist = async (req, res) => {
     }
 };
 
+// @desc    Clear wishlist
+// @route   DELETE /api/wishlist
+// @access  Private (User)
+const clearWishlist = async (req, res) => {
+    try {
+        const wishlist = await Wishlist.findOne({ userId: req.user._id });
+        if (wishlist) {
+            wishlist.products = [];
+            await wishlist.save();
+            return res.json({ success: true, message: 'Wishlist cleared', wishlist });
+        }
+        res.status(404).json({ success: false, message: 'Wishlist not found' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getWishlist,
-    toggleWishlist
+    toggleWishlist,
+    clearWishlist
 };
