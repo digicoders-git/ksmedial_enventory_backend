@@ -60,9 +60,83 @@ const registerUser = async (req, res) => {
     }
 };
 
-// @desc    Auth user & get token
-// @route   POST /api/auth/user-login
+// @desc    Send OTP to phone
+// @route   POST /api/auth/send-otp
 // @access  Public
+const sendOTP = async (req, res) => {
+    try {
+        const { phone } = req.body;
+        if (!phone) {
+            return res.status(400).json({ message: 'Phone number is required' });
+        }
+
+        // Logic for sending OTP (Fixed to 1234 as requested)
+        res.json({
+            success: true,
+            message: 'OTP sent successfully to ' + phone,
+            otp: "1234" // For testing/fixed as requested
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Verify OTP and Log in/Register
+// @route   POST /api/auth/verify-otp
+// @access  Public
+const verifyOTP = async (req, res) => {
+    try {
+        const { phone, otp, referralCode } = req.body;
+
+        if (otp !== "1234") {
+            return res.status(400).json({ message: 'Invalid OTP' });
+        }
+
+        let user = await User.findOne({ phone });
+
+        if (!user) {
+            // Register new user if they don't exist
+            let referredBy = null;
+            if (referralCode) {
+                const referrer = await User.findOne({ referralCode });
+                if (referrer) {
+                    referredBy = referrer._id;
+                }
+            }
+
+            // Generate a unique referral code for the new user
+            const newReferralCode = `KS${phone.slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+
+            user = await User.create({
+                phone,
+                referralCode: newReferralCode,
+                referredBy,
+                firstName: 'User', // Placeholder
+                lastName: phone.slice(-4)
+            });
+        }
+
+        res.json({
+            user: {
+                _id: user._id,
+                name: user.firstName + ' ' + user.lastName,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                phone: user.phone,
+                referralCode: user.referralCode,
+                walletBalance: user.walletBalance
+            },
+            token: generateToken(user._id),
+            message: 'OTP Verified successfully'
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Auth user & get token (Keep old login for backward compatibility or remove if strictly OTP)
 const loginUser = async (req, res) => {
     try {
         const { emailOrPhone, password } = req.body;
