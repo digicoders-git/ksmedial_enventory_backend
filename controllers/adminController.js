@@ -233,7 +233,7 @@ const getAdminProducts = async (req, res) => {
         if (scope === 'global') {
             query = { $or: [{ shopId: { $exists: false } }, { shopId: null }] };
         } else if (scope === 'inventory') {
-            query = { shopId: { $ne: null, $exists: true } };
+            query = { shopId: { $ne: null, $exists: true }, isInventoryLive: true };
         }
 
         const products = await Product.find(query)
