@@ -253,16 +253,22 @@ const updateUserProfile = async (req, res) => {
             user.lastName = req.body.lastName || user.lastName;
             user.email = req.body.email || user.email;
 
-            // Handle Profile Image Upload (File or Base64)
+            // Handle Profile Image Update
             if (req.file) {
+                console.log('UpdateProfile: Image file received');
                 const result = await uploadToCloudinary(req.file.path);
-                if (fs.existsSync(req.file.path)) {
-                    fs.unlinkSync(req.file.path);
+                if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+                user.image = result.secure_url;
+            } else if (req.body.image) {
+                console.log('UpdateProfile: Image string received, length:', req.body.image.length);
+                if (req.body.image.startsWith('data:image')) {
+                    console.log('UpdateProfile: Base64 image detected, uploading...');
+                    const result = await uploadToCloudinary(req.body.image);
+                    user.image = result.secure_url;
+                } else {
+                    console.log('UpdateProfile: Direct image URL/string detected');
+                    user.image = req.body.image;
                 }
-                user.image = result.secure_url;
-            } else if (req.body.image && req.body.image.startsWith('data:image')) {
-                const result = await uploadToCloudinary(req.body.image);
-                user.image = result.secure_url;
             }
 
             const updatedUser = await user.save();
