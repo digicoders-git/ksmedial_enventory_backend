@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, required: true, unique: true },
     password: { type: String, select: false },
     isActive: { type: Boolean, default: true },
+    image: { type: String, default: '' },
     referralCode: { type: String, unique: true },
     referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     walletBalance: { type: Number, default: 0 },

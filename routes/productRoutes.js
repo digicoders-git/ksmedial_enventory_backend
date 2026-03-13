@@ -19,6 +19,10 @@ const {
 } = require('../controllers/productController');
 const { protect } = require('../middleware/authMiddleware');
 
+// Public route for Mobile App (No Token Required)
+router.get('/live', getProducts);
+
+// Protect all routes below
 router.use(protect);
 
 router.get('/non-moving', getNonMovingStock);

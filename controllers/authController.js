@@ -2,6 +2,8 @@ const User = require('../models/User');
 const Shop = require('../models/Shop');
 const jwt = require('jsonwebtoken');
 const { logActivity } = require('./activityController');
+const { uploadToCloudinary } = require('../utils/cloudinary');
+const fs = require('fs');
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -223,6 +225,7 @@ const getUserProfile = async (req, res) => {
                     lastName: user.lastName,
                     email: user.email,
                     phone: user.phone,
+                    image: user.image,
                     referralCode: user.referralCode,
                     walletBalance: user.walletBalance,
                     totalEarnings: user.totalEarnings,
@@ -250,6 +253,15 @@ const updateUserProfile = async (req, res) => {
             user.lastName = req.body.lastName || user.lastName;
             user.email = req.body.email || user.email;
 
+            // Handle Profile Image Upload
+            if (req.file) {
+                const result = await uploadToCloudinary(req.file.path);
+                if (fs.existsSync(req.file.path)) {
+                    fs.unlinkSync(req.file.path);
+                }
+                user.image = result.secure_url;
+            }
+
             const updatedUser = await user.save();
 
             res.json({
@@ -261,6 +273,7 @@ const updateUserProfile = async (req, res) => {
                     lastName: updatedUser.lastName,
                     email: updatedUser.email,
                     phone: updatedUser.phone,
+                    image: updatedUser.image,
                     referralCode: updatedUser.referralCode,
                     walletBalance: updatedUser.walletBalance
                 },
@@ -270,6 +283,9 @@ const updateUserProfile = async (req, res) => {
             res.status(404).json({ message: 'User not found' });
         }
     } catch (error) {
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
         res.status(500).json({ message: error.message });
     }
 };
