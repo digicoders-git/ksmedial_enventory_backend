@@ -7,7 +7,14 @@ const Sale = require('../models/Sale');
 // @access  Private
 const getProducts = async (req, res) => {
     try {
-        const query = { shopId: req.shop._id };
+        console.log('GetProducts call - Shop defined:', !!req.shop);
+        const query = {};
+        
+        // If accessed by a logged-in shop, filter by their shop ID
+        if (req.shop && req.shop._id) {
+            query.shopId = req.shop._id;
+        }
+
         if (req.query.category) {
             query.category = { $regex: new RegExp(`^${req.query.category}$`, 'i') }; // Case-insensitive match
         }
@@ -17,8 +24,16 @@ const getProducts = async (req, res) => {
         } else if (req.query.isLive === 'false') {
             query.isInventoryLive = false;
         }
-        const products = await Product.find(query).sort({ createdAt: -1 });
-        res.json({ success: true, products });
+        
+        let productsQuery = Product.find(query).sort({ createdAt: -1 });
+        
+        // For public mobile app, populate the shop details to show where the product comes from
+        if (!req.shop) {
+            productsQuery = productsQuery.populate('shopId', 'shopName city');
+        }
+
+        const products = await productsQuery;
+        res.json({ success: true, count: products.length, products });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
