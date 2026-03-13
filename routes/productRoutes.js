@@ -22,6 +22,9 @@ const upload = require('../middleware/uploadMiddleware');
 
 // Public route for Mobile App (No Token Required)
 router.get('/live', getProducts);
+router.get('/public', getProducts);
+router.get('/public/:id', getProductById);
+router.get('/search/public', searchProducts);
 
 // Protect all routes below
 router.use(protect);

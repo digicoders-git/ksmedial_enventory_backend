@@ -46,7 +46,15 @@ const getProducts = async (req, res) => {
 // @access  Private
 const getProductById = async (req, res) => {
     try {
-        const product = await Product.findOne({ _id: req.params.id, shopId: req.shop._id });
+        const query = { _id: req.params.id };
+        
+        // If accessed by a shop, ensure they only see their own product
+        if (req.shop && req.shop._id) {
+            query.shopId = req.shop._id;
+        }
+
+        const product = await Product.findOne(query).populate('shopId', 'shopName city contactNumber');
+        
         if (!product) {
             return res.status(404).json({ success: false, message: 'Product not found' });
         }
@@ -480,7 +488,14 @@ const searchProducts = async (req, res) => {
             lowStock
         } = req.query;
 
-        const query = { shopId: req.shop._id };
+        const query = {};
+        
+        // If accessed by a logged-in shop, filter by their shop ID
+        if (req.shop && req.shop._id) {
+            query.shopId = req.shop._id;
+        } else if (req.query.shopId) {
+            query.shopId = req.query.shopId;
+        }
         
         // Filter for Live Stock only when requested (e.g., from Inventory Master)
         if (req.query.isLive === 'true') {
@@ -498,7 +513,14 @@ const searchProducts = async (req, res) => {
         ];
 
         // Fetch all matching basic criteria to perform advanced filtering in JS
-        let products = await Product.find(query).sort({ createdAt: -1 });
+        let productsQuery = Product.find(query).sort({ createdAt: -1 });
+
+        // Populate shop details for public mobile app
+        if (!req.shop) {
+            productsQuery = productsQuery.populate('shopId', 'shopName city');
+        }
+
+        let products = await productsQuery;
 
         // Extra safety check: If isLive is requested, ensure no 0 qty items leaked through
         if (req.query.isLive === 'true') {
