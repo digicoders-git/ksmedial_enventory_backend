@@ -10,6 +10,9 @@ const {
 } = require('../controllers/notificationController');
 const { protect } = require('../middleware/authMiddleware');
 
+// Public route for Mobile App (No Token Required)
+router.get('/public', getNotifications);
+
 router.use(protect);
 
 router.route('/')

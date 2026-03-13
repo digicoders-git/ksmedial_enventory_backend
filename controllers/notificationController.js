@@ -6,8 +6,8 @@ const asyncHandler = require('express-async-handler');
 // @route   GET /api/notifications
 // @access  Private
 const getNotifications = asyncHandler(async (req, res) => {
-    const shopId = req.shop?._id;
-
+    const shopId = req.shop && req.shop._id ? req.shop._id : null;
+    
     if (shopId) {
         // Check for Critical Low Stock
         const lowStockProducts = await Product.find({ 
@@ -54,7 +54,7 @@ const getNotifications = asyncHandler(async (req, res) => {
         }
     }
 
-    const query = shopId ? { shopId } : {};
+    const query = shopId ? { shopId } : { shopId: null };
     const notifications = await Notification.find(query).sort({ createdAt: -1 });
     res.json(notifications);
 });
