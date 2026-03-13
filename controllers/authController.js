@@ -253,12 +253,15 @@ const updateUserProfile = async (req, res) => {
             user.lastName = req.body.lastName || user.lastName;
             user.email = req.body.email || user.email;
 
-            // Handle Profile Image Upload
+            // Handle Profile Image Upload (File or Base64)
             if (req.file) {
                 const result = await uploadToCloudinary(req.file.path);
                 if (fs.existsSync(req.file.path)) {
                     fs.unlinkSync(req.file.path);
                 }
+                user.image = result.secure_url;
+            } else if (req.body.image && req.body.image.startsWith('data:image')) {
+                const result = await uploadToCloudinary(req.body.image);
                 user.image = result.secure_url;
             }
 
