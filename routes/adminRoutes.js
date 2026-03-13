@@ -47,6 +47,9 @@ const {
 // Customers (Unified)
 router.get('/customers-all', protectAdmin, getAllAdminCustomers);
 
+// Public Offers for Mobile App
+router.get('/offers/public', listOffers);
+
 // Auth
 router.post('/login', adminLogin);
 router.post('/create', createAdmin);
