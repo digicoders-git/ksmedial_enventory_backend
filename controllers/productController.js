@@ -1,6 +1,8 @@
 const Product = require('../models/Product');
 const InventoryLog = require('../models/InventoryLog');
 const Sale = require('../models/Sale');
+const { uploadToCloudinary } = require('../utils/cloudinary');
+const fs = require('fs');
 
 // @desc    Get all products for a shop
 // @route   GET /api/products
@@ -69,6 +71,18 @@ const createProduct = async (req, res) => {
 
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
 
+        let imageUrl = image;
+
+        // Handle Image Upload (Multer or Base64)
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.path);
+            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+            imageUrl = result.secure_url;
+        } else if (image && image.startsWith('data:image')) {
+            const result = await uploadToCloudinary(image);
+            imageUrl = result.secure_url;
+        }
+
         const product = await Product.create({
             name, genericName, company,
             batchNumber: batchNumber || 'N/A', 
@@ -81,7 +95,9 @@ const createProduct = async (req, res) => {
             slug: slug,
             reorderLevel: reorderLevel || 20,
             packing, hsnCode, tax, unit, description,
-            isPrescriptionRequired, rackLocation, image, brand, status,
+            isPrescriptionRequired, rackLocation, 
+            image: imageUrl, 
+            brand, status,
             manufacturingDate,
             shopId: req.shop._id
         });
@@ -104,13 +120,26 @@ const updateProduct = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Product not found' });
         }
 
-        product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+        let updateData = { ...req.body };
+
+        // Handle Image Update
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.path);
+            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+            updateData.image = result.secure_url;
+        } else if (req.body.image && req.body.image.startsWith('data:image')) {
+            const result = await uploadToCloudinary(req.body.image);
+            updateData.image = result.secure_url;
+        }
+
+        product = await Product.findByIdAndUpdate(req.params.id, updateData, {
             new: true,
             runValidators: true
         });
 
         res.json({ success: true, product });
     } catch (error) {
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(500).json({ success: false, message: error.message });
     }
 };

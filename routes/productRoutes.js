@@ -18,6 +18,7 @@ const {
     getNonMovingStock
 } = require('../controllers/productController');
 const { protect } = require('../middleware/authMiddleware');
+const upload = require('../middleware/uploadMiddleware');
 
 // Public route for Mobile App (No Token Required)
 router.get('/live', getProducts);
@@ -40,7 +41,7 @@ router.route('/report')
 
 router.route('/')
     .get(getProducts)
-    .post(createProduct);
+    .post(upload.single('image'), createProduct);
 
 router.route('/logs')
     .get(getInventoryLogs);
@@ -50,7 +51,7 @@ router.route('/:id/adjust')
 
 router.route('/:id')
     .get(getProductById)
-    .put(updateProduct)
+    .put(upload.single('image'), updateProduct)
     .delete(deleteProduct);
 
 module.exports = router;
