@@ -6,14 +6,32 @@ const Product = require('../models/Product');
 // @access  Private
 const getCategories = async (req, res) => {
     try {
-        const categories = await Category.find({ shopId: req.shop._id });
+        const query = {};
+        
+        // If accessed by a logged-in shop, filter by their shop ID
+        if (req.shop && req.shop._id) {
+            query.shopId = req.shop._id;
+        }
+
+        const categories = await Category.find(query);
         
         // Count products for each category
         const categoriesWithCount = await Promise.all(categories.map(async (cat) => {
-            const count = await Product.countDocuments({ 
-                shopId: req.shop._id, 
+            const productQuery = { 
                 category: { $regex: new RegExp(`^${cat.name}$`, 'i') } 
-            });
+            };
+            
+            // Filter by shop if shop context is available
+            if (req.shop && req.shop._id) {
+                productQuery.shopId = req.shop._id;
+            } else {
+                // For public view, only count live products with quantity
+                productQuery.isInventoryLive = true;
+                productQuery.quantity = { $gt: 0 };
+            }
+
+            const count = await Product.countDocuments(productQuery);
+            
             return {
                 ...cat._doc,
                 count,
@@ -23,7 +41,7 @@ const getCategories = async (req, res) => {
             };
         }));
 
-        res.json({ success: true, categories: categoriesWithCount });
+        res.json({ success: true, count: categoriesWithCount.length, categories: categoriesWithCount });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

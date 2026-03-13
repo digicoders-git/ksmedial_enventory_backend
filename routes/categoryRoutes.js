@@ -8,6 +8,9 @@ const {
 } = require('../controllers/categoryController');
 const { protect } = require('../middleware/authMiddleware');
 
+// Public route for Mobile App
+router.get('/public', getCategories);
+
 router.use(protect);
 
 router.route('/')
