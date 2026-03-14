@@ -97,6 +97,8 @@ app.use('/api/locations', require('./routes/locationRoutes'));
 app.use('/api/purchase-orders', require('./routes/purchaseOrderRoutes'));
 app.use('/api/cart', require('./routes/cartRoutes'));
 app.use('/api/wishlist', require('./routes/wishlistRoutes'));
+app.use('/api/payment', require('./routes/paymentRoutes'));
+app.use('/api/address', require('./routes/addressRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.post('/api/admin/change-password', protectAdmin, changeAdminPassword);
 app.post('/admin/change-password', protectAdmin, changeAdminPassword);
