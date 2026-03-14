@@ -19,9 +19,20 @@ const getMyOrders = async (req, res) => {
     try {
         const orders = await Order.find({ userId: req.user._id })
             .sort({ createdAt: -1 })
+            .populate('userId', 'firstName lastName email phone')
             .populate('items.product', 'name image sellingPrice');
 
-        res.json({ success: true, count: orders.length, orders });
+        const formattedOrders = orders.map(order => {
+            const orderObj = order.toObject();
+            if (orderObj.userId) {
+                orderObj.userId.name = (orderObj.userId.firstName || orderObj.userId.lastName)
+                    ? `${orderObj.userId.firstName || ''} ${orderObj.userId.lastName || ''}`.trim()
+                    : orderObj.userId.phone;
+            }
+            return orderObj;
+        });
+
+        res.json({ success: true, count: orders.length, orders: formattedOrders });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -33,13 +44,21 @@ const getMyOrders = async (req, res) => {
 const getMyOrderById = async (req, res) => {
     try {
         const order = await Order.findOne({ _id: req.params.id, userId: req.user._id })
+            .populate('userId', 'firstName lastName email phone')
             .populate('items.product', 'name image sellingPrice category');
 
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
 
-        res.json({ success: true, order });
+        const orderObj = order.toObject();
+        if (orderObj.userId) {
+            orderObj.userId.name = (orderObj.userId.firstName || orderObj.userId.lastName)
+                ? `${orderObj.userId.firstName || ''} ${orderObj.userId.lastName || ''}`.trim()
+                : orderObj.userId.phone;
+        }
+
+        res.json({ success: true, order: orderObj });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -263,12 +282,23 @@ const getOrders = async (req, res) => {
         // For now, let's fetch all orders if they share the same DB.
         const orders = await Order.find()
             .sort({ createdAt: -1 })
-            .populate('userId', 'name email phone')
+            .populate('userId', 'firstName lastName email phone')
             .populate('items.product', 'name sku');
             
+        // Map to ensure name is never "undefined undefined"
+        const formattedOrders = orders.map(order => {
+            const orderObj = order.toObject();
+            if (orderObj.userId) {
+                orderObj.userId.name = (orderObj.userId.firstName || orderObj.userId.lastName)
+                    ? `${orderObj.userId.firstName || ''} ${orderObj.userId.lastName || ''}`.trim()
+                    : orderObj.userId.phone || 'Unknown User';
+            }
+            return orderObj;
+        });
+
         res.json({
             success: true,
-            orders
+            orders: formattedOrders
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -281,16 +311,23 @@ const getOrders = async (req, res) => {
 const getOrderById = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id)
-            .populate('userId', 'name email phone')
+            .populate('userId', 'firstName lastName email phone')
             .populate('items.product');
             
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
+
+        const orderObj = order.toObject();
+        if (orderObj.userId) {
+            orderObj.userId.name = (orderObj.userId.firstName || orderObj.userId.lastName)
+                ? `${orderObj.userId.firstName || ''} ${orderObj.userId.lastName || ''}`.trim()
+                : orderObj.userId.phone || 'Unknown User';
+        }
         
         res.json({
             success: true,
-            order
+            order: orderObj
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
