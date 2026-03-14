@@ -579,8 +579,9 @@ const approvePrescriptionRequest = async (req, res) => {
 
         // --- Cleanup Duplicates ---
         // Mark all other SAME user's pending requests as approved (since we've now verified them)
+        const targetUserId = request.userId._id || request.userId;
         await PrescriptionRequest.updateMany(
-            { userId: request.userId._id, status: 'pending' },
+            { userId: targetUserId, status: 'pending' },
             { $set: { status: 'approved', orderId: order._id } }
         );
 
