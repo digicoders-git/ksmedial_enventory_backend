@@ -10,7 +10,9 @@ const {
     getMyOrderById,
     trackOrder,
     placeOrder,
-    bulkUpdateOrderStatus
+    bulkUpdateOrderStatus,
+    getPrescriptionRequests,
+    approvePrescriptionRequest
 } = require('../controllers/orderController');
 const { protect, protectUser } = require('../middleware/authMiddleware');
 
@@ -31,5 +33,9 @@ router.post('/seed', protect, createTestOrders);
 router.put('/bulk-status', protect, bulkUpdateOrderStatus);
 router.get('/:id', protect, getOrderById);
 router.put('/:id/status', protect, updateOrderStatus);
+
+// Prescription Request Routes
+router.get('/prescription/requests', protect, getPrescriptionRequests);
+router.put('/prescription/requests/:id/approve', protect, approvePrescriptionRequest);
 
 module.exports = router;

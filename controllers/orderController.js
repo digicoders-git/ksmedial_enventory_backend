@@ -3,6 +3,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const Shop = require('../models/Shop');
+const PrescriptionRequest = require('../models/PrescriptionRequest');
 
 // ==========================================
 // USER FACING APIS
@@ -127,6 +128,42 @@ const placeOrder = async (req, res) => {
             });
         }
 
+        // --- Prescription Logic ---
+        let prescriptionRequired = false;
+        const productsRequiringPrescription = [];
+
+        for (const item of items) {
+            const product = await Product.findById(item.productId);
+            if (product && product.isPrescriptionRequired) {
+                prescriptionRequired = true;
+                productsRequiringPrescription.push(product.name);
+            }
+        }
+
+        // Check if prescription image is already provided in the request
+        const providedPrescription = req.body.prescriptionImage;
+
+        if (prescriptionRequired && !providedPrescription) {
+            // Case B: Prescription required but not provided
+            // As per user request: Don't create order, instead create a request for Admin
+            const request = await PrescriptionRequest.create({
+                userId: req.user._id,
+                items: orderItems,
+                shippingAddress,
+                paymentMethod,
+                subtotal,
+                total: subtotal,
+                status: 'pending'
+            });
+
+            return res.status(200).json({
+                success: true,
+                isPrescriptionRequest: true,
+                message: 'Your order includes items requiring a prescription. A request has been sent to the Admin for approval. You will be notified once approved.',
+                requestId: request._id
+            });
+        }
+
         const orderNumber = `KS4-${Date.now()}`;
 
         const order = await Order.create({
@@ -142,7 +179,8 @@ const placeOrder = async (req, res) => {
             notes,
             razorpayOrderId,
             razorpayPaymentId,
-            orderType: 'KS4'
+            orderType: 'KS4',
+            prescriptionImage: providedPrescription ? { url: providedPrescription } : undefined
         });
 
         res.status(201).json({
@@ -445,6 +483,64 @@ const bulkUpdateOrderStatus = async (req, res) => {
     }
 };
 
+// @desc    Get all prescription requests (Admin)
+// @route   GET /api/orders/prescription-requests
+// @access  Private (Admin)
+const getPrescriptionRequests = async (req, res) => {
+    try {
+        const requests = await PrescriptionRequest.find()
+            .populate('userId', 'name email phone')
+            .sort({ createdAt: -1 });
+
+        res.json({ success: true, requests });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Approve prescription request and create order
+// @route   PUT /api/orders/prescription-requests/:id/approve
+// @access  Private (Admin)
+const approvePrescriptionRequest = async (req, res) => {
+    try {
+        const request = await PrescriptionRequest.findById(req.params.id);
+        if (!request) {
+            return res.status(404).json({ success: false, message: 'Request not found' });
+        }
+
+        if (request.status !== 'pending') {
+            return res.status(400).json({ success: false, message: `Request is already ${request.status}` });
+        }
+
+        // Create the actual order
+        const orderNumber = `KS4-${Date.now()}`;
+        const order = await Order.create({
+            userId: request.userId,
+            orderNumber,
+            items: request.items,
+            subtotal: request.subtotal,
+            total: request.total,
+            shippingAddress: request.shippingAddress,
+            paymentMethod: request.paymentMethod,
+            status: 'pending',
+            orderType: 'KS4'
+        });
+
+        request.status = 'approved';
+        request.orderId = order._id;
+        request.adminActionBy = req.user ? req.user._id : null; 
+        await request.save();
+
+        res.json({
+            success: true,
+            message: 'Prescription approved and order created successfully',
+            order
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     // User facing
     getMyOrders,
@@ -457,5 +553,7 @@ module.exports = {
     getOrderById,
     updateOrderStatus,
     bulkUpdateOrderStatus,
-    createTestOrders
+    createTestOrders,
+    getPrescriptionRequests,
+    approvePrescriptionRequest
 };
