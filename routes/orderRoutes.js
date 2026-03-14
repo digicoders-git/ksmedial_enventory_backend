@@ -12,7 +12,8 @@ const {
     placeOrder,
     bulkUpdateOrderStatus,
     getPrescriptionRequests,
-    approvePrescriptionRequest
+    approvePrescriptionRequest,
+    uploadAdminPrescription
 } = require('../controllers/orderController');
 const { protect, protectUser } = require('../middleware/authMiddleware');
 
@@ -37,5 +38,6 @@ router.put('/:id/status', protect, updateOrderStatus);
 // Prescription Request Routes
 router.get('/prescription/requests', protect, getPrescriptionRequests);
 router.put('/prescription/requests/:id/approve', protect, approvePrescriptionRequest);
+router.put('/prescription/requests/:id/upload', protect, uploadAdminPrescription);
 
 module.exports = router;

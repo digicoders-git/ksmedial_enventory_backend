@@ -597,6 +597,27 @@ const approvePrescriptionRequest = async (req, res) => {
     }
 };
 
+const uploadAdminPrescription = async (req, res) => {
+    try {
+        const { prescriptionImage } = req.body;
+        if (!prescriptionImage) {
+            return res.status(400).json({ success: false, message: 'Please provide prescription image' });
+        }
+
+        const request = await PrescriptionRequest.findById(req.params.id);
+        if (!request) {
+            return res.status(404).json({ success: false, message: 'Request not found' });
+        }
+
+        request.prescriptionImage = prescriptionImage;
+        await request.save();
+
+        res.json({ success: true, message: 'Prescription uploaded successfully', request });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     // User facing
     getMyOrders,
@@ -611,5 +632,6 @@ module.exports = {
     bulkUpdateOrderStatus,
     createTestOrders,
     getPrescriptionRequests,
-    approvePrescriptionRequest
+    approvePrescriptionRequest,
+    uploadAdminPrescription
 };
