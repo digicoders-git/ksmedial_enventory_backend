@@ -11,19 +11,23 @@ const getCart = async (req, res) => {
             return res.json({ success: true, cart, totalAmount: 0 });
         }
 
+        const cartObj = cart.toObject();
         let totalAmount = 0;
-        const itemsWithSubtotal = cart.items.map(item => {
-            const subtotal = (item.product.sellingPrice || 0) * item.quantity;
+
+        cartObj.items = cartObj.items.map(item => {
+            const subtotal = (item.product && item.product.sellingPrice ? item.product.sellingPrice : 0) * item.quantity;
             totalAmount += subtotal;
             return {
-                ...item._doc,
+                ...item,
                 subtotal
             };
         });
 
+        cartObj.totalPrice = totalAmount;
+
         res.json({ 
             success: true, 
-            cart: { ...cart._doc, items: itemsWithSubtotal },
+            cart: cartObj,
             totalAmount 
         });
     } catch (error) {
@@ -55,21 +59,24 @@ const addToCart = async (req, res) => {
         }
 
         const populatedCart = await Cart.findById(cart._id).populate('items.product');
-        
+        const cartObj = populatedCart.toObject();
         let totalAmount = 0;
-        const itemsWithSubtotal = populatedCart.items.map(item => {
-            const subtotal = (item.product.sellingPrice || 0) * item.quantity;
+
+        cartObj.items = cartObj.items.map(item => {
+            const subtotal = (item.product && item.product.sellingPrice ? item.product.sellingPrice : 0) * item.quantity;
             totalAmount += subtotal;
             return {
-                ...item._doc,
+                ...item,
                 subtotal
             };
         });
 
+        cartObj.totalPrice = totalAmount;
+
         res.json({ 
             success: true, 
             message: 'Item added to cart', 
-            cart: { ...populatedCart._doc, items: itemsWithSubtotal },
+            cart: cartObj,
             totalAmount
         });
     } catch (error) {
@@ -91,21 +98,24 @@ const updateCartItem = async (req, res) => {
                 cart.items[itemIndex].quantity = quantity;
                 await cart.save();
                 const populatedCart = await Cart.findById(cart._id).populate('items.product');
-                
+                const cartObj = populatedCart.toObject();
                 let totalAmount = 0;
-                const itemsWithSubtotal = populatedCart.items.map(item => {
-                    const subtotal = (item.product.sellingPrice || 0) * item.quantity;
+
+                cartObj.items = cartObj.items.map(item => {
+                    const subtotal = (item.product && item.product.sellingPrice ? item.product.sellingPrice : 0) * item.quantity;
                     totalAmount += subtotal;
                     return {
-                        ...item._doc,
+                        ...item,
                         subtotal
                     };
                 });
 
+                cartObj.totalPrice = totalAmount;
+
                 return res.json({ 
                     success: true, 
                     message: 'Cart updated', 
-                    cart: { ...populatedCart._doc, items: itemsWithSubtotal },
+                    cart: cartObj,
                     totalAmount
                 });
             }
