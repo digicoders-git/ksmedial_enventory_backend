@@ -47,8 +47,10 @@ const {
 // Customers (Unified)
 router.get('/customers-all', protectAdmin, getAllAdminCustomers);
 
-// Public Offers for Mobile App
+// Public Routes for Mobile App (No Token Required)
 router.get('/offers/public', listOffers);
+router.get('/sliders/public', listSliders);
+router.get('/blogs/public', getAllBlogs);
 
 // Auth
 router.post('/login', adminLogin);
