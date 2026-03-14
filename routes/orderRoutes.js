@@ -16,11 +16,12 @@ const {
     uploadAdminPrescription
 } = require('../controllers/orderController');
 const { protect, protectUser } = require('../middleware/authMiddleware');
+const upload = require('../middleware/uploadMiddleware');
 
 // ==========================================
 // USER ROUTES (User Token)
 // ==========================================
-router.post('/place', protectUser, placeOrder);
+router.post('/place', protectUser, upload.single('prescriptionImage'), placeOrder);
 router.get('/my-orders', protectUser, getMyOrders);
 router.get('/my-orders/:id', protectUser, getMyOrderById);
 router.get('/track/:identifier', protectUser, trackOrder);
@@ -38,6 +39,6 @@ router.put('/:id/status', protect, updateOrderStatus);
 // Prescription Request Routes
 router.get('/prescription/requests', protect, getPrescriptionRequests);
 router.put('/prescription/requests/:id/approve', protect, approvePrescriptionRequest);
-router.put('/prescription/requests/:id/upload', protect, uploadAdminPrescription);
+router.put('/prescription/requests/:id/upload', protect, upload.single('prescriptionImage'), uploadAdminPrescription);
 
 module.exports = router;

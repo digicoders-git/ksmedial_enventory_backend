@@ -5,6 +5,8 @@ const User = require('../models/User');
 const Shop = require('../models/Shop');
 const PrescriptionRequest = require('../models/PrescriptionRequest');
 const Prescription = require('../models/Prescription'); // Added
+const { uploadToCloudinary } = require('../utils/cloudinary');
+const fs = require('fs');
 
 // ==========================================
 // USER FACING APIS
@@ -98,11 +100,15 @@ const trackOrder = async (req, res) => {
 // @access  Private (User Token)
 const placeOrder = async (req, res) => {
     try {
-        const {
+        let {
             items, shippingAddress, paymentMethod = 'COD',
             offerCode, notes,
             razorpayOrderId, razorpayPaymentId
         } = req.body;
+
+        // Parse fields if they come as strings (for FormData)
+        if (typeof items === 'string') items = JSON.parse(items);
+        if (typeof shippingAddress === 'string') shippingAddress = JSON.parse(shippingAddress);
 
         if (!items || items.length === 0) {
             return res.status(400).json({ success: false, message: 'No items in order' });
@@ -141,11 +147,18 @@ const placeOrder = async (req, res) => {
             }
         }
 
+        // --- Handle File Upload to Cloudinary ---
+        let prescriptionImageUrl = req.body.prescriptionImage; // Fallback to body string if provided
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.path, 'prescriptions');
+            prescriptionImageUrl = result.secure_url;
+            // Cleanup local file
+            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        }
+
         // --- Prescription Request Flow ---
         // If ANY product in the order requires a prescription, it MUST be verified by Admin
         if (prescriptionRequired) {
-            const providedPrescription = req.body.prescriptionImage;
-
             const request = await PrescriptionRequest.create({
                 userId: req.user._id,
                 items: orderItems,
@@ -155,7 +168,7 @@ const placeOrder = async (req, res) => {
                 total: subtotal,
                 status: 'pending',
                 shopId: firstShopId,
-                prescriptionImage: providedPrescription
+                prescriptionImage: prescriptionImageUrl
             });
 
             return res.status(200).json({
@@ -183,7 +196,7 @@ const placeOrder = async (req, res) => {
             razorpayPaymentId,
             orderType: 'KS4',
             shopId: firstShopId,
-            prescriptionImage: providedPrescription ? { url: providedPrescription } : undefined
+            prescriptionImage: prescriptionImageUrl ? { url: prescriptionImageUrl } : undefined
         });
 
         res.status(201).json({
@@ -586,7 +599,15 @@ const approvePrescriptionRequest = async (req, res) => {
 
 const uploadAdminPrescription = async (req, res) => {
     try {
-        const { prescriptionImage } = req.body;
+        let prescriptionImage = req.body.prescriptionImage;
+
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.path, 'prescriptions');
+            prescriptionImage = result.secure_url;
+            // Cleanup
+            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        }
+
         if (!prescriptionImage) {
             return res.status(400).json({ success: false, message: 'Please provide prescription image' });
         }
