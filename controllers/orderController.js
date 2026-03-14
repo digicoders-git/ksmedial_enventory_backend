@@ -522,7 +522,7 @@ const getPrescriptionRequests = async (req, res) => {
 // @access  Private (Admin)
 const approvePrescriptionRequest = async (req, res) => {
     try {
-        const request = await PrescriptionRequest.findById(req.params.id);
+        const request = await PrescriptionRequest.findById(req.params.id).populate('userId');
         if (!request) {
             return res.status(404).json({ success: false, message: 'Request not found' });
         }
