@@ -213,26 +213,39 @@ const getOrderById = async (req, res) => {
 
 // @desc    Update order status
 // @route   PUT /api/orders/:id/status
-// @access  Private
+// @access  Private (Shop Token)
 const updateOrderStatus = async (req, res) => {
     try {
-        const { status, problemDescription } = req.body;
+        const { 
+            status, 
+            problemDescription, 
+            trackingId, 
+            trackingUrl, 
+            expectedHandover,
+            paymentStatus
+        } = req.body;
+
         const order = await Order.findById(req.params.id);
         
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
         
-        order.status = status;
-        if (problemDescription !== undefined) {
-            order.problemDescription = problemDescription;
-        }
+        // Update status
+        if (status !== undefined) order.status = status;
+        if (problemDescription !== undefined) order.problemDescription = problemDescription;
+        
+        // Update tracking info (user dekh sakta hai)
+        if (trackingId !== undefined) order.trackingId = trackingId;
+        if (trackingUrl !== undefined) order.trackingUrl = trackingUrl;
+        if (expectedHandover !== undefined) order.expectedHandover = expectedHandover;
+        if (paymentStatus !== undefined) order.paymentStatus = paymentStatus;
         
         await order.save();
         
         res.json({
             success: true,
-            message: 'Order status updated successfully',
+            message: 'Order updated successfully',
             order
         });
     } catch (error) {
