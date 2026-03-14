@@ -164,7 +164,8 @@ const placeOrder = async (req, res) => {
                 subtotal,
                 total: subtotal,
                 status: 'pending',
-                shopId: firstProduct?.shopId
+                shopId: firstProduct?.shopId,
+                prescriptionImage: providedPrescription // Save the uploaded image
             });
 
             return res.status(200).json({
@@ -554,7 +555,8 @@ const approvePrescriptionRequest = async (req, res) => {
             paymentMethod: request.paymentMethod,
             status: 'pending',
             orderType: 'KS4',
-            shopId: request.shopId
+            shopId: request.shopId,
+            prescriptionImage: request.prescriptionImage ? { url: request.prescriptionImage } : undefined
         });
 
         request.status = 'approved';
