@@ -495,11 +495,23 @@ const bulkUpdateOrderStatus = async (req, res) => {
 // @access  Private (Admin)
 const getPrescriptionRequests = async (req, res) => {
     try {
-        const requests = await PrescriptionRequest.find()
-            .populate('userId', 'name email phone')
+        // Only return pending requests to keep the list clean for Admin
+        const requests = await PrescriptionRequest.find({ status: 'pending' })
+            .populate('userId', 'firstName lastName phone email')
             .sort({ createdAt: -1 });
 
-        res.json({ success: true, requests });
+        // Fix name display for "undefined undefined"
+        const formattedRequests = requests.map(req => {
+            const user = req.userId ? req.userId.toObject() : null;
+            if (user) {
+                user.name = (user.firstName || user.lastName) 
+                    ? `${user.firstName || ''} ${user.lastName || ''}`.trim() 
+                    : user.phone;
+            }
+            return { ...req.toObject(), userId: user };
+        });
+
+        res.json({ success: true, requests: formattedRequests });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -538,9 +550,31 @@ const approvePrescriptionRequest = async (req, res) => {
         request.adminActionBy = req.user ? req.user._id : null; 
         await request.save();
 
+        // --- Permanent Verification ---
+        // Create a verified prescription entry so the user is never blocked again
+        await Prescription.findOneAndUpdate(
+            { phone: request.userId.phone },
+            {
+                patient: request.shippingAddress.name || 'User',
+                age: 0,
+                phone: request.userId.phone,
+                status: 'Verified',
+                image: 'SYSTEM_APPROVED_VIA_REQUEST',
+                shop: request.shopId || (req.user ? req.user._id : order._id) // Fallback
+            },
+            { upsert: true }
+        );
+
+        // --- Cleanup Duplicates ---
+        // Mark all other SAME user's pending requests as approved (since we've now verified them)
+        await PrescriptionRequest.updateMany(
+            { userId: request.userId._id, status: 'pending' },
+            { $set: { status: 'approved', orderId: order._id } }
+        );
+
         res.json({
             success: true,
-            message: 'Prescription approved and order created successfully',
+            message: 'Prescription approved, user verified, and order created successfully',
             order
         });
     } catch (error) {
