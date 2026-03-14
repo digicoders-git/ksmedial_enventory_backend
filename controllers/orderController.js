@@ -4,6 +4,7 @@ const Product = require('../models/Product');
 const User = require('../models/User');
 const Shop = require('../models/Shop');
 const PrescriptionRequest = require('../models/PrescriptionRequest');
+const Prescription = require('../models/Prescription'); // Added
 
 // ==========================================
 // USER FACING APIS
@@ -143,8 +144,14 @@ const placeOrder = async (req, res) => {
         // Check if prescription image is already provided in the request
         const providedPrescription = req.body.prescriptionImage;
 
-        if (prescriptionRequired && !providedPrescription) {
-            // Case B: Prescription required but not provided
+        // Check if user has ANY previously "Verified" prescription in the system
+        const previouslyVerified = await Prescription.findOne({ 
+            phone: req.user.phone, 
+            status: 'Verified' 
+        });
+
+        if (prescriptionRequired && !providedPrescription && !previouslyVerified) {
+            // Case B: Prescription required but not provided AND no history of verification
             // As per user request: Don't create order, instead create a request for Admin
             const request = await PrescriptionRequest.create({
                 userId: req.user._id,
