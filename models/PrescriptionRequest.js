@@ -34,6 +34,8 @@ const prescriptionRequestSchema = new mongoose.Schema(
     rejectionReason: { type: String },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+    offerCode: { type: String },
+    discount: { type: Number, default: 0 },
     prescriptionImage: { type: String }
   },
   { timestamps: true }

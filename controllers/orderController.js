@@ -147,6 +147,35 @@ const placeOrder = async (req, res) => {
             }
         }
 
+        // --- Offer/Coupon Logic ---
+        let discount = 0;
+        let finalTotal = subtotal;
+
+        if (offerCode) {
+            const offer = await Offer.findOne({ code: offerCode, isActive: true });
+            if (!offer) {
+                return res.status(400).json({ success: false, message: 'Invalid or expired offer code' });
+            }
+
+            // Check Minimum Order Amount
+            if (subtotal < offer.minOrderAmount) {
+                return res.status(400).json({ success: false, message: `Minimum order amount for this offer is ₹${offer.minOrderAmount}` });
+            }
+
+            // Calculate Discount
+            if (offer.discountType === 'percentage') {
+                discount = (subtotal * offer.discountValue) / 100;
+                if (offer.maxDiscountAmount && discount > offer.maxDiscountAmount) {
+                    discount = offer.maxDiscountAmount;
+                }
+            } else {
+                discount = offer.discountValue;
+            }
+
+            finalTotal = subtotal - discount;
+            if (finalTotal < 0) finalTotal = 0;
+        }
+
         // --- Handle File Upload to Cloudinary ---
         let prescriptionImageUrl = req.body.prescriptionImage; // Fallback to body string if provided
         if (req.file) {
@@ -165,7 +194,9 @@ const placeOrder = async (req, res) => {
                 shippingAddress,
                 paymentMethod,
                 subtotal,
-                total: subtotal,
+                discount,
+                offerCode,
+                total: finalTotal,
                 status: 'pending',
                 shopId: firstShopId,
                 prescriptionImage: prescriptionImageUrl
@@ -186,7 +217,8 @@ const placeOrder = async (req, res) => {
             orderNumber,
             items: orderItems,
             subtotal,
-            total: subtotal,
+            discount: discount,
+            total: finalTotal,
             shippingAddress,
             paymentMethod,
             paymentStatus: (razorpayPaymentId) ? 'paid' : 'pending',
@@ -550,6 +582,8 @@ const approvePrescriptionRequest = async (req, res) => {
             orderNumber,
             items: request.items,
             subtotal: request.subtotal,
+            discount: request.discount || 0,
+            offerCode: request.offerCode,
             total: request.total,
             shippingAddress: request.shippingAddress,
             paymentMethod: request.paymentMethod,
