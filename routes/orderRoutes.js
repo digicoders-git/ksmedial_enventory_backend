@@ -5,16 +5,29 @@ const {
     getOrderById, 
     updateOrderStatus, 
     createTestOrders,
-    cancelMyOrder 
+    cancelMyOrder,
+    getMyOrders,
+    getMyOrderById,
+    trackOrder,
+    placeOrder
 } = require('../controllers/orderController');
 const { protect, protectUser } = require('../middleware/authMiddleware');
 
+// ==========================================
+// USER ROUTES (User Token)
+// ==========================================
+router.post('/place', protectUser, placeOrder);
+router.get('/my-orders', protectUser, getMyOrders);
+router.get('/my-orders/:id', protectUser, getMyOrderById);
+router.get('/track/:identifier', protectUser, trackOrder);
+router.put('/my-orders/:id/cancel', protectUser, cancelMyOrder);
+
+// ==========================================
+// ADMIN / SHOP ROUTES (Shop Token)
+// ==========================================
 router.get('/', protect, getOrders);
 router.post('/seed', protect, createTestOrders);
 router.get('/:id', protect, getOrderById);
 router.put('/:id/status', protect, updateOrderStatus);
-
-// User Side Cancellation
-router.put('/my-orders/:id/cancel', protectUser, cancelMyOrder);
 
 module.exports = router;

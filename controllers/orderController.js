@@ -1,7 +1,170 @@
+const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
-const User = require('../models/User'); // Import User model for dummy user assignment
-const Shop = require('../models/Shop'); // Import Shop model
+const User = require('../models/User');
+const Shop = require('../models/Shop');
+
+// ==========================================
+// USER FACING APIS
+// ==========================================
+
+// @desc    Get logged-in user's all orders
+// @route   GET /api/orders/my-orders
+// @access  Private (User Token)
+const getMyOrders = async (req, res) => {
+    try {
+        const orders = await Order.find({ userId: req.user._id })
+            .sort({ createdAt: -1 })
+            .populate('items.product', 'name image sellingPrice');
+
+        res.json({ success: true, count: orders.length, orders });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Get single order detail for logged-in user
+// @route   GET /api/orders/my-orders/:id
+// @access  Private (User Token)
+const getMyOrderById = async (req, res) => {
+    try {
+        const order = await Order.findOne({ _id: req.params.id, userId: req.user._id })
+            .populate('items.product', 'name image sellingPrice category');
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+
+        res.json({ success: true, order });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Track an order by ID or orderNumber (Public/User)
+// @route   GET /api/orders/track/:identifier
+// @access  Private (User Token)
+const trackOrder = async (req, res) => {
+    try {
+        const { identifier } = req.params;
+
+        // Find by orderNumber OR _id
+        const query = mongoose.Types.ObjectId.isValid(identifier)
+            ? { $or: [{ _id: identifier }, { orderNumber: identifier }], userId: req.user._id }
+            : { orderNumber: identifier, userId: req.user._id };
+
+        const order = await Order.findOne(query)
+            .populate('items.product', 'name image');
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+
+        // Build timeline from status
+        const statusTimeline = [
+            { step: 'Order Placed', done: true, time: order.createdAt },
+            { step: 'Confirmed', done: ['confirmed', 'shipped', 'delivered', 'Picking', 'Packing', 'Quality Check', 'Scanned For Shipping'].includes(order.status) },
+            { step: 'Processing', done: ['shipped', 'delivered', 'Quality Check', 'Scanned For Shipping'].includes(order.status) },
+            { step: 'Shipped', done: ['shipped', 'delivered', 'Scanned For Shipping'].includes(order.status) },
+            { step: 'Delivered', done: order.status === 'delivered' }
+        ];
+
+        res.json({
+            success: true,
+            tracking: {
+                orderNumber: order.orderNumber,
+                status: order.status,
+                paymentStatus: order.paymentStatus,
+                paymentMethod: order.paymentMethod,
+                trackingId: order.trackingId || null,
+                trackingUrl: order.trackingUrl || null,
+                expectedHandover: order.expectedHandover || null,
+                shippingAddress: order.shippingAddress,
+                timeline: statusTimeline,
+                items: order.items,
+                total: order.total,
+                createdAt: order.createdAt
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Place a new order
+// @route   POST /api/orders/place
+// @access  Private (User Token)
+const placeOrder = async (req, res) => {
+    try {
+        const {
+            items, shippingAddress, paymentMethod = 'COD',
+            offerCode, notes,
+            razorpayOrderId, razorpayPaymentId
+        } = req.body;
+
+        if (!items || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'No items in order' });
+        }
+        if (!shippingAddress) {
+            return res.status(400).json({ success: false, message: 'Shipping address is required' });
+        }
+
+        let subtotal = 0;
+        const orderItems = [];
+
+        for (const item of items) {
+            const product = await Product.findById(item.productId);
+            if (!product) {
+                return res.status(404).json({ success: false, message: `Product not found: ${item.productId}` });
+            }
+            const price = product.sellingPrice;
+            subtotal += price * item.quantity;
+            orderItems.push({
+                product: product._id,
+                productName: product.name,
+                productPrice: price,
+                quantity: item.quantity
+            });
+        }
+
+        const orderNumber = `KS4-${Date.now()}`;
+
+        const order = await Order.create({
+            userId: req.user._id,
+            orderNumber,
+            items: orderItems,
+            subtotal,
+            total: subtotal,
+            shippingAddress,
+            paymentMethod,
+            paymentStatus: (razorpayPaymentId) ? 'paid' : 'pending',
+            offerCode,
+            notes,
+            razorpayOrderId,
+            razorpayPaymentId,
+            orderType: 'KS4'
+        });
+
+        res.status(201).json({
+            success: true,
+            message: 'Order placed successfully',
+            order: {
+                _id: order._id,
+                orderNumber: order.orderNumber,
+                status: order.status,
+                paymentStatus: order.paymentStatus,
+                total: order.total,
+                createdAt: order.createdAt
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ==========================================
+// ADMIN / SHOP FACING APIS
+// ==========================================
 
 // @desc    Get all online orders
 // @route   GET /api/orders
@@ -235,9 +398,15 @@ const cancelMyOrder = async (req, res) => {
 };
 
 module.exports = {
+    // User facing
+    getMyOrders,
+    getMyOrderById,
+    trackOrder,
+    placeOrder,
+    cancelMyOrder,
+    // Admin / Shop facing
     getOrders,
     getOrderById,
     updateOrderStatus,
-    createTestOrders,
-    cancelMyOrder
+    createTestOrders
 };
