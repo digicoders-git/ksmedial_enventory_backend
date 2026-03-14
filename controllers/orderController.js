@@ -240,6 +240,7 @@ const updateOrderStatus = async (req, res) => {
         if (trackingUrl !== undefined) order.trackingUrl = trackingUrl;
         if (expectedHandover !== undefined) order.expectedHandover = expectedHandover;
         if (paymentStatus !== undefined) order.paymentStatus = paymentStatus;
+        if (req.body.dispatchProof !== undefined) order.dispatchProof = req.body.dispatchProof;
         
         await order.save();
         
@@ -410,6 +411,40 @@ const cancelMyOrder = async (req, res) => {
     }
 };
 
+// @desc    Bulk update orders status
+// @route   PUT /api/orders/bulk-status
+// @access  Private (Shop Token)
+const bulkUpdateOrderStatus = async (req, res) => {
+    try {
+        const { orderIds, status, trackingUrl, expectedHandover } = req.body;
+
+        if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+            return res.status(400).json({ success: false, message: 'Please provide an array of order IDs' });
+        }
+
+        if (!status) {
+            return res.status(400).json({ success: false, message: 'Please provide a status' });
+        }
+
+        const updateData = { status };
+        if (trackingUrl) updateData.trackingUrl = trackingUrl;
+        if (expectedHandover) updateData.expectedHandover = expectedHandover;
+
+        const result = await Order.updateMany(
+            { _id: { $in: orderIds } },
+            { $set: updateData }
+        );
+
+        res.json({
+            success: true,
+            message: `${result.modifiedCount} orders updated successfully`,
+            count: result.modifiedCount
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     // User facing
     getMyOrders,
@@ -421,5 +456,6 @@ module.exports = {
     getOrders,
     getOrderById,
     updateOrderStatus,
+    bulkUpdateOrderStatus,
     createTestOrders
 };

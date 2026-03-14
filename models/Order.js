@@ -79,7 +79,8 @@ const orderSchema = new mongoose.Schema(
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
     problemDescription: { type: String },
     trackingId: { type: String }, // Added
-    trackingUrl: { type: String } // Added
+    trackingUrl: { type: String }, // Added
+    dispatchProof: { type: String } // Added for scan confirmation
   },
   { timestamps: true }
 );

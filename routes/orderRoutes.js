@@ -9,7 +9,8 @@ const {
     getMyOrders,
     getMyOrderById,
     trackOrder,
-    placeOrder
+    placeOrder,
+    bulkUpdateOrderStatus
 } = require('../controllers/orderController');
 const { protect, protectUser } = require('../middleware/authMiddleware');
 
@@ -27,6 +28,7 @@ router.put('/my-orders/:id/cancel', protectUser, cancelMyOrder);
 // ==========================================
 router.get('/', protect, getOrders);
 router.post('/seed', protect, createTestOrders);
+router.put('/bulk-status', protect, bulkUpdateOrderStatus);
 router.get('/:id', protect, getOrderById);
 router.put('/:id/status', protect, updateOrderStatus);
 
