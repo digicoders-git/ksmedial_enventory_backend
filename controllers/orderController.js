@@ -113,12 +113,18 @@ const placeOrder = async (req, res) => {
 
         let subtotal = 0;
         const orderItems = [];
+        let prescriptionRequired = false;
+        const productsRequiringPrescription = [];
+        let firstShopId = null;
 
         for (const item of items) {
             const product = await Product.findById(item.productId);
             if (!product) {
                 return res.status(404).json({ success: false, message: `Product not found: ${item.productId}` });
             }
+
+            if (!firstShopId) firstShopId = product.shopId;
+
             const price = product.sellingPrice;
             subtotal += price * item.quantity;
             orderItems.push({
@@ -127,34 +133,18 @@ const placeOrder = async (req, res) => {
                 productPrice: price,
                 quantity: item.quantity
             });
-        }
 
-        // --- Prescription Logic ---
-        let prescriptionRequired = false;
-        const productsRequiringPrescription = [];
-
-        for (const item of items) {
-            const product = await Product.findById(item.productId);
-            if (product && product.isPrescriptionRequired) {
+            // Check if this specific product needs a prescription
+            if (product.isPrescriptionRequired) {
                 prescriptionRequired = true;
                 productsRequiringPrescription.push(product.name);
             }
         }
 
-        // Check if prescription image is already provided in the request
-        const providedPrescription = req.body.prescriptionImage;
-
-        // Check if user has ANY previously "Verified" prescription in the system
-        const previouslyVerified = await Prescription.findOne({ 
-            phone: req.user.phone, 
-            status: 'Verified' 
-        });
-
-        if (prescriptionRequired && !providedPrescription && !previouslyVerified) {
-            // Case B: Prescription required but not provided AND no history of verification
-            // As per user request: Don't create order, instead create a request for Admin
-            // Get Shop ID for the request (from first product)
-            const firstProduct = await Product.findById(items[0].productId);
+        // --- Prescription Request Flow ---
+        // If ANY product in the order requires a prescription, it MUST be verified by Admin
+        if (prescriptionRequired) {
+            const providedPrescription = req.body.prescriptionImage;
 
             const request = await PrescriptionRequest.create({
                 userId: req.user._id,
@@ -164,22 +154,19 @@ const placeOrder = async (req, res) => {
                 subtotal,
                 total: subtotal,
                 status: 'pending',
-                shopId: firstProduct?.shopId,
-                prescriptionImage: providedPrescription // Save the uploaded image
+                shopId: firstShopId,
+                prescriptionImage: providedPrescription
             });
 
             return res.status(200).json({
                 success: true,
                 isPrescriptionRequest: true,
-                message: 'Your order includes items requiring a prescription. A request has been sent to the Admin for approval. You will be notified once approved.',
+                message: 'Your order includes items requiring a prescription. A request has been sent to the Shop for approval.',
                 requestId: request._id
             });
         }
 
         const orderNumber = `KS4-${Date.now()}`;
-
-        // Get Shop ID for the order
-        const firstProduct = await Product.findById(items[0].productId);
 
         const order = await Order.create({
             userId: req.user._id,
@@ -195,7 +182,7 @@ const placeOrder = async (req, res) => {
             razorpayOrderId,
             razorpayPaymentId,
             orderType: 'KS4',
-            shopId: firstProduct?.shopId,
+            shopId: firstShopId,
             prescriptionImage: providedPrescription ? { url: providedPrescription } : undefined
         });
 
