@@ -153,6 +153,9 @@ const placeOrder = async (req, res) => {
         if (prescriptionRequired && !providedPrescription && !previouslyVerified) {
             // Case B: Prescription required but not provided AND no history of verification
             // As per user request: Don't create order, instead create a request for Admin
+            // Get Shop ID for the request (from first product)
+            const firstProduct = await Product.findById(items[0].productId);
+
             const request = await PrescriptionRequest.create({
                 userId: req.user._id,
                 items: orderItems,
@@ -160,7 +163,8 @@ const placeOrder = async (req, res) => {
                 paymentMethod,
                 subtotal,
                 total: subtotal,
-                status: 'pending'
+                status: 'pending',
+                shopId: firstProduct?.shopId
             });
 
             return res.status(200).json({
@@ -172,6 +176,9 @@ const placeOrder = async (req, res) => {
         }
 
         const orderNumber = `KS4-${Date.now()}`;
+
+        // Get Shop ID for the order
+        const firstProduct = await Product.findById(items[0].productId);
 
         const order = await Order.create({
             userId: req.user._id,
@@ -187,6 +194,7 @@ const placeOrder = async (req, res) => {
             razorpayOrderId,
             razorpayPaymentId,
             orderType: 'KS4',
+            shopId: firstProduct?.shopId,
             prescriptionImage: providedPrescription ? { url: providedPrescription } : undefined
         });
 
@@ -495,8 +503,11 @@ const bulkUpdateOrderStatus = async (req, res) => {
 // @access  Private (Admin)
 const getPrescriptionRequests = async (req, res) => {
     try {
-        // Only return pending requests to keep the list clean for Admin
-        const requests = await PrescriptionRequest.find({ status: 'pending' })
+        // Filter by shopId to ensure shops only see their own requests
+        const requests = await PrescriptionRequest.find({ 
+            status: 'pending',
+            shopId: req.shop._id 
+        })
             .populate('userId', 'firstName lastName phone email')
             .sort({ createdAt: -1 });
 
@@ -542,7 +553,8 @@ const approvePrescriptionRequest = async (req, res) => {
             shippingAddress: request.shippingAddress,
             paymentMethod: request.paymentMethod,
             status: 'pending',
-            orderType: 'KS4'
+            orderType: 'KS4',
+            shopId: request.shopId
         });
 
         request.status = 'approved';

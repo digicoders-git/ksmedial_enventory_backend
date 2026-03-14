@@ -32,7 +32,8 @@ const prescriptionRequestSchema = new mongoose.Schema(
     },
     adminActionBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
     rejectionReason: { type: String },
-    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' }
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
+    shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' }
   },
   { timestamps: true }
 );
