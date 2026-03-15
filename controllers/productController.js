@@ -85,7 +85,7 @@ const createProduct = async (req, res) => {
         if (req.file) {
             // Already saved to inventry_image folder by productUpload middleware
             // Return FULL URL for frontend to display without changes
-            imageUrl = `${req.protocol}://${req.get('host')}/inventry_image/${req.file.originalname}`;
+            imageUrl = `${req.protocol}://${req.get('host')}/inventry_image/${req.file.filename}`;
         } else if (image && image.startsWith('data:image')) {
             // If base64 is sent, we also save it locally as per requirement
             const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
@@ -139,7 +139,7 @@ const updateProduct = async (req, res) => {
 
         // Handle Local Image Update
         if (req.file) {
-            updateData.image = `${req.protocol}://${req.get('host')}/inventry_image/${req.file.originalname}`;
+            updateData.image = `${req.protocol}://${req.get('host')}/inventry_image/${req.file.filename}`;
         } else if (req.body.image && req.body.image.startsWith('data:image')) {
             const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
             const fileName = `base64-${Date.now()}.png`;
