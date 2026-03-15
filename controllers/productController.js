@@ -74,7 +74,7 @@ const createProduct = async (req, res) => {
             purchasePrice, sellingPrice, quantity, category, sku, 
             reorderLevel, packing, hsnCode, tax, unit, description,
             isPrescriptionRequired, rackLocation, image, brand, status,
-            manufacturingDate
+            manufacturingDate, about, sideEffects, howToUse, safetyAdvices
         } = req.body;
 
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
@@ -109,12 +109,19 @@ const createProduct = async (req, res) => {
             sku: sku || `SKU-${Date.now()}`,
             slug: slug,
             reorderLevel: reorderLevel || 20,
-            packing, hsnCode, tax, unit, description,
-            isPrescriptionRequired, rackLocation, 
+            packing, hsnCode, tax, unit,
+            isPrescriptionRequired, 
+            rackLocation, 
             image: imageUrl, 
-            brand, status,
-            manufacturingDate,
-            shopId: req.shop._id
+            brand, 
+            shopId: req.shop._id,
+            status: status || 'Active',
+            manufacturingDate: manufacturingDate || 'N/A',
+            about,
+            sideEffects,
+            howToUse,
+            safetyAdvices,
+            description
         });
 
         res.status(201).json({ success: true, product });

@@ -23,6 +23,9 @@ const productSchema = new mongoose.Schema(
     unit: { type: String, default: 'Pcs' },
     description: { type: String },
     about: { type: String },
+    sideEffects: { type: String },
+    howToUse: { type: String },
+    safetyAdvices: { type: String },
     isPrescriptionRequired: { type: Boolean, default: false },
     rackLocation: { type: String },
     image: { type: String }, // Main Image
