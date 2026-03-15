@@ -136,6 +136,14 @@ const placeOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Shipping address is required' });
         }
 
+        // --- Fix "undefined undefined" name in shipping address ---
+        if (!shippingAddress.name || shippingAddress.name.includes('undefined')) {
+            const userName = (req.user.firstName || req.user.lastName)
+                ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim()
+                : req.user.phone;
+            shippingAddress.name = userName;
+        }
+
         let subtotal = 0;
         const orderItems = [];
         let prescriptionRequired = false;
@@ -160,7 +168,8 @@ const placeOrder = async (req, res) => {
             });
 
             // Check if this specific product needs a prescription
-            if (product.isPrescriptionRequired) {
+            // Ensure comparison is robust (handle string "true" if needed)
+            if (product.isPrescriptionRequired === true || product.isPrescriptionRequired === 'true') {
                 prescriptionRequired = true;
                 productsRequiringPrescription.push(product.name);
             }
