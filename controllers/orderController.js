@@ -216,7 +216,6 @@ const placeOrder = async (req, res) => {
                 if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
             }
         }
-
         // --- Prescription Request Flow ---
         // If ANY product in the order requires a prescription, it MUST be verified by Admin
         if (prescriptionRequired) {
@@ -234,13 +233,19 @@ const placeOrder = async (req, res) => {
                 prescriptionImage: prescriptionImageUrl
             });
 
+            const userMessage = prescriptionImageUrl
+                ? 'Your prescription has been uploaded and sent for approval. Your order will be confirmed once verified.'
+                : 'Your order requires a prescription. Since you haven\'t uploaded one, our admin/doctor will review your request and provide one. Your order will be confirmed after that.';
+
             return res.status(200).json({
                 success: true,
                 isPrescriptionRequest: true,
-                message: 'Your order includes items requiring a prescription. A request has been sent to the Shop for approval.',
-                requestId: request._id
+                message: userMessage,
+                requestId: request._id,
+                hasPrescription: !!prescriptionImageUrl
             });
         }
+
 
         const orderNumber = `KS4-${Date.now()}`;
 
@@ -290,14 +295,14 @@ const placeOrder = async (req, res) => {
 const getOrders = async (req, res) => {
     try {
         const shopId = req.shop._id;
-        // Since Admin Panel orders might not have shopId, we might fetch all 
-        // Or filter if we add shopId to them. 
+        // Since Admin Panel orders might not have shopId, we might fetch all
+        // Or filter if we add shopId to them.
         // For now, let's fetch all orders if they share the same DB.
         const orders = await Order.find()
             .sort({ createdAt: -1 })
             .populate('userId', 'firstName lastName email phone')
             .populate('items.product', 'name sku');
-            
+
         // Map to ensure name is never "undefined undefined"
         const formattedOrders = orders.map(order => {
             const orderObj = order.toObject();
@@ -326,7 +331,7 @@ const getOrderById = async (req, res) => {
         const order = await Order.findById(req.params.id)
             .populate('userId', 'firstName lastName email phone')
             .populate('items.product');
-            
+
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
@@ -337,7 +342,7 @@ const getOrderById = async (req, res) => {
                 ? `${orderObj.userId.firstName || ''} ${orderObj.userId.lastName || ''}`.trim()
                 : orderObj.userId.phone || 'Unknown User';
         }
-        
+
         res.json({
             success: true,
             order: orderObj
@@ -352,25 +357,25 @@ const getOrderById = async (req, res) => {
 // @access  Private (Shop Token)
 const updateOrderStatus = async (req, res) => {
     try {
-        const { 
-            status, 
-            problemDescription, 
-            trackingId, 
-            trackingUrl, 
+        const {
+            status,
+            problemDescription,
+            trackingId,
+            trackingUrl,
             expectedHandover,
             paymentStatus
         } = req.body;
 
         const order = await Order.findById(req.params.id);
-        
+
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
-        
+
         // Update status
         if (status !== undefined) order.status = status;
         if (problemDescription !== undefined) order.problemDescription = problemDescription;
-        
+
         // Update tracking info (user dekh sakta hai)
         if (trackingId !== undefined) order.trackingId = trackingId;
         if (trackingUrl !== undefined) order.trackingUrl = trackingUrl;
@@ -384,7 +389,7 @@ const updateOrderStatus = async (req, res) => {
             } finally {
                 if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
             }
-        } 
+        }
         // Fallback: If it's a base64 string, we should also handle it (though file is preferred)
         else if (req.body.dispatchProof && req.body.dispatchProof.startsWith('data:image')) {
             // Since we don't want to save long strings, we'll ignore it or suggest file upload
@@ -394,9 +399,9 @@ const updateOrderStatus = async (req, res) => {
         } else if (req.body.dispatchProof !== undefined) {
             order.dispatchProof = req.body.dispatchProof;
         }
-        
+
         await order.save();
-        
+
         res.json({
             success: true,
             message: 'Order updated successfully',
@@ -413,7 +418,7 @@ const updateOrderStatus = async (req, res) => {
 const createTestOrders = async (req, res) => {
     try {
         let shopId = req.shop ? req.shop._id : null;
-        
+
         // Ensure Shop Exists
         if (!shopId) {
             const shop = await Shop.findOne();
@@ -440,7 +445,7 @@ const createTestOrders = async (req, res) => {
         // Find a user or create a dummy one
         let user = await User.findOne({ role: 'user' }); // Prefer a customer role
         if (!user) user = await User.findOne(); // Fallback to any user
-        
+
         if (!user) {
             user = await User.create({
                 name: 'Test Customer',
@@ -453,18 +458,18 @@ const createTestOrders = async (req, res) => {
 
         // Find some products
         let products = await Product.find({ shopId: shopId }).limit(5);
-        
+
         // If no products for this shop, try to find ANY products or create dummy
         if (products.length === 0) {
             products = await Product.find().limit(5); // Fallback to any products
-            
+
             if (products.length === 0) {
                 // Create dummy product if none
                 const dummyProduct = await Product.create({
                     name: 'Test Medicine Paracetamol',
-                    sku: `TEST-PARA-${Date.now()}`, 
+                    sku: `TEST-PARA-${Date.now()}`,
                     description: 'Test Description',
-                    purchasePrice: 100, 
+                    purchasePrice: 100,
                     sellingPrice: 150,
                     quantity: 100,
                     category: 'Medicine',
@@ -483,7 +488,7 @@ const createTestOrders = async (req, res) => {
             const randomProduct = products[Math.floor(Math.random() * products.length)];
             const qty = Math.floor(Math.random() * 5) + 1;
             const price = randomProduct.sellingPrice || randomProduct.price || 100;
-            
+
             const item = {
                 product: randomProduct._id,
                 productName: randomProduct.name,
@@ -492,7 +497,7 @@ const createTestOrders = async (req, res) => {
             };
 
             const subtotal = price * qty;
-            
+
             const uniqueSuffix = `${Date.now()}-${i}`;
             orders.push({
                 orderNumber: `ORD-${uniqueSuffix}`,
@@ -551,7 +556,7 @@ const cancelMyOrder = async (req, res) => {
 
         order.status = 'cancelled';
         order.problemDescription = 'Cancelled by user';
-        
+
         await order.save();
 
         res.json({
@@ -604,9 +609,9 @@ const bulkUpdateOrderStatus = async (req, res) => {
 const getPrescriptionRequests = async (req, res) => {
     try {
         // Filter by shopId to ensure shops only see their own requests
-        const requests = await PrescriptionRequest.find({ 
+        const requests = await PrescriptionRequest.find({
             status: 'pending',
-            shopId: req.shop._id 
+            shopId: req.shop._id
         })
             .populate('userId', 'firstName lastName phone email')
             .sort({ createdAt: -1 });
@@ -615,8 +620,8 @@ const getPrescriptionRequests = async (req, res) => {
         const formattedRequests = requests.map(req => {
             const user = req.userId ? req.userId.toObject() : null;
             if (user) {
-                user.name = (user.firstName || user.lastName) 
-                    ? `${user.firstName || ''} ${user.lastName || ''}`.trim() 
+                user.name = (user.firstName || user.lastName)
+                    ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
                     : user.phone;
             }
             return { ...req.toObject(), userId: user };
@@ -662,7 +667,7 @@ const approvePrescriptionRequest = async (req, res) => {
 
         request.status = 'approved';
         request.orderId = order._id;
-        request.adminActionBy = req.user ? req.user._id : null; 
+        request.adminActionBy = req.user ? req.user._id : null;
         await request.save();
 
         // --- Permanent Verification ---
@@ -707,7 +712,6 @@ const uploadAdminPrescription = async (req, res) => {
                 const result = await uploadToCloudinary(req.file.path, 'prescriptions');
                 prescriptionImage = result.secure_url;
             } finally {
-                // Always cleanup local temporary file
                 if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
             }
         }
@@ -716,15 +720,61 @@ const uploadAdminPrescription = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please provide prescription image' });
         }
 
-        const request = await PrescriptionRequest.findById(req.params.id);
+        const request = await PrescriptionRequest.findById(req.params.id).populate('userId');
         if (!request) {
             return res.status(404).json({ success: false, message: 'Request not found' });
         }
 
+        if (request.status !== 'pending') {
+            return res.status(400).json({ success: false, message: `Request is already ${request.status}` });
+        }
+
+        // 1. Update the image in the request
         request.prescriptionImage = prescriptionImage;
+
+        // 2. Automatically APPROVE and CREATE the order as per the "confirm" concept
+        const orderNumber = `KS4-${Date.now()}`;
+        const order = await Order.create({
+            userId: request.userId,
+            orderNumber,
+            items: request.items,
+            subtotal: request.subtotal,
+            discount: request.discount || 0,
+            offerCode: request.offerCode,
+            total: request.total,
+            shippingAddress: request.shippingAddress,
+            paymentMethod: request.paymentMethod,
+            status: 'pending',
+            orderType: 'KS4',
+            shopId: request.shopId,
+            prescriptionImage: { url: prescriptionImage }
+        });
+
+        request.status = 'approved';
+        request.orderId = order._id;
+        request.adminActionBy = req.user ? req.user._id : null;
         await request.save();
 
-        res.json({ success: true, message: 'Prescription uploaded successfully', request });
+        // 3. Update permanent verification for the user
+        await Prescription.findOneAndUpdate(
+            { phone: request.userId.phone },
+            {
+                patient: request.shippingAddress.name || 'User',
+                age: 0,
+                phone: request.userId.phone,
+                status: 'Verified',
+                image: prescriptionImage,
+                shop: request.shopId || (req.user ? req.user._id : order._id)
+            },
+            { upsert: true }
+        );
+
+        res.json({
+            success: true,
+            message: 'Doctor prescription uploaded and order confirmed successfully',
+            orderId: order._id,
+            request
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
