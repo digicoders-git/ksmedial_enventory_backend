@@ -85,12 +85,33 @@ const trackOrder = async (req, res) => {
         }
 
         // Build timeline from status
+        const isConfirmed = ['confirmed', 'shipped', 'delivered', 'Picking', 'Packing', 'Quality Check', 'Scanned For Shipping', 'On Hold', 'Billing'].includes(order.status);
+        const isProcessing = ['shipped', 'delivered', 'Picking', 'Packing', 'Quality Check', 'Scanned For Shipping', 'Billing'].includes(order.status);
+        const isShipped = ['shipped', 'delivered', 'Scanned For Shipping'].includes(order.status);
+        const isDelivered = order.status === 'delivered';
+
         const statusTimeline = [
             { step: 'Order Placed', done: true, time: order.createdAt },
-            { step: 'Confirmed', done: ['confirmed', 'shipped', 'delivered', 'Picking', 'Packing', 'Quality Check', 'Scanned For Shipping'].includes(order.status) },
-            { step: 'Processing', done: ['shipped', 'delivered', 'Quality Check', 'Scanned For Shipping'].includes(order.status) },
-            { step: 'Shipped', done: ['shipped', 'delivered', 'Scanned For Shipping'].includes(order.status) },
-            { step: 'Delivered', done: order.status === 'delivered' }
+            { 
+                step: 'Confirmed', 
+                done: isConfirmed, 
+                time: isConfirmed ? (order.status === 'confirmed' ? order.updatedAt : order.createdAt) : null 
+            },
+            { 
+                step: 'Processing', 
+                done: isProcessing, 
+                time: isProcessing ? order.updatedAt : null 
+            },
+            { 
+                step: 'Shipped', 
+                done: isShipped, 
+                time: isShipped ? order.updatedAt : null 
+            },
+            { 
+                step: 'Delivered', 
+                done: isDelivered, 
+                time: isDelivered ? order.updatedAt : null 
+            }
         ];
 
         res.json({
@@ -102,7 +123,7 @@ const trackOrder = async (req, res) => {
                 paymentMethod: order.paymentMethod,
                 trackingId: order.trackingId || null,
                 trackingUrl: order.trackingUrl || null,
-                expectedHandover: order.expectedHandover || null,
+                expectedHandover: order.expectedHandover || new Date(new Date(order.createdAt).getTime() + 3 * 24 * 60 * 60 * 1000),
                 shippingAddress: order.shippingAddress,
                 timeline: statusTimeline,
                 items: order.items,
@@ -236,6 +257,7 @@ const placeOrder = async (req, res) => {
                 prescriptionImage: prescriptionImageUrl ? { url: prescriptionImageUrl } : undefined,
                 razorpayOrderId,
                 razorpayPaymentId,
+                expectedHandover: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
                 notes
             });
 

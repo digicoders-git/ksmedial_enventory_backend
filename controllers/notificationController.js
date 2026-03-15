@@ -7,6 +7,7 @@ const asyncHandler = require('express-async-handler');
 // @access  Private
 const getNotifications = asyncHandler(async (req, res) => {
     const shopId = req.shop && req.shop._id ? req.shop._id : null;
+    const userId = req.user && req.user._id ? req.user._id : null;
     
     if (shopId) {
         // Check for Critical Low Stock
@@ -30,7 +31,7 @@ const getNotifications = asyncHandler(async (req, res) => {
             }
         }
 
-        // Check for Expiry (Simplistic check if date is valid)
+        // Check for Expiry
         const products = await Product.find({ shopId, expiryDate: { $ne: 'N/A' } });
         const thirtyDaysFromNow = new Date();
         thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
@@ -54,7 +55,25 @@ const getNotifications = asyncHandler(async (req, res) => {
         }
     }
 
-    const query = shopId ? { shopId } : { shopId: null };
+    // Query Logic:
+    // 1. If shopId exists: Show notifications for that shop OR global public
+    // 2. If userId exists: Show notifications for that user OR global public
+    // 3. Fallback: Show only global public
+    const query = { 
+        $or: [
+            { isPublic: true },
+            { shopId: null, userId: null } // Old global style
+        ]
+    };
+
+    if (shopId) {
+        query.$or.push({ shopId });
+    }
+    
+    if (userId) {
+        query.$or.push({ userId });
+    }
+
     const notifications = await Notification.find(query).sort({ createdAt: -1 });
     res.json(notifications);
 });
@@ -63,14 +82,16 @@ const getNotifications = asyncHandler(async (req, res) => {
 // @route   POST /api/notifications
 // @access  Private
 const createNotification = asyncHandler(async (req, res) => {
-    const { type, title, message } = req.body;
-    const shopId = req.shop?._id;
+    const { type, title, message, isPublic, userId: targetUserId } = req.body;
+    const shopId = isPublic || targetUserId ? null : req.shop?._id;
 
     const notification = await Notification.create({
         type,
         title,
         message,
-        shopId
+        shopId,
+        userId: targetUserId || null,
+        isPublic: isPublic || false
     });
 
     res.status(201).json(notification);
@@ -97,7 +118,15 @@ const markAsRead = asyncHandler(async (req, res) => {
 // @access  Private
 const markAllAsRead = asyncHandler(async (req, res) => {
     const shopId = req.shop?._id;
-    const query = shopId ? { shopId, read: false } : { read: false };
+    const userId = req.user?._id;
+    
+    let query = { read: false };
+    if (shopId) {
+        query.shopId = shopId;
+    } else if (userId) {
+        query.userId = userId;
+    }
+
     await Notification.updateMany(query, { read: true });
     res.json({ message: 'All notifications marked as read' });
 });
@@ -122,7 +151,15 @@ const deleteNotification = asyncHandler(async (req, res) => {
 // @access  Private
 const clearAllNotifications = asyncHandler(async (req, res) => {
     const shopId = req.shop?._id;
-    const query = shopId ? { shopId } : {};
+    const userId = req.user?._id;
+    
+    let query = {};
+    if (shopId) {
+        query.shopId = shopId;
+    } else if (userId) {
+        query.userId = userId;
+    }
+
     await Notification.deleteMany(query);
     res.json({ message: 'All notifications cleared' });
 });
@@ -135,5 +172,3 @@ module.exports = {
     deleteNotification,
     clearAllNotifications
 };
-
-

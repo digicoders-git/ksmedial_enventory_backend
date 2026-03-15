@@ -8,15 +8,16 @@ const {
     deleteNotification,
     clearAllNotifications
 } = require('../controllers/notificationController');
-const { protect } = require('../middleware/authMiddleware');
+const { protectAny, protectAdminOrShop } = require('../middleware/authMiddleware');
 
-// Public route for Mobile App (No Token Required)
+// Public route for Mobile App (Legacy/External)
 router.get('/public', getNotifications);
 
-router.use(protect);
+// Protect all other routes for any authenticated user (Admin, Shop, or User)
+router.use(protectAny);
 
 router.route('/')
-    .get(getNotifications)
+    .get(getNotifications) // Now handles shopId/userId filter internally
     .post(createNotification)
     .delete(clearAllNotifications);
 
@@ -28,4 +29,3 @@ router.route('/:id')
 router.route('/:id/read').put(markAsRead);
 
 module.exports = router;
-

@@ -109,4 +109,46 @@ const protectAdminOrShop = async (req, res, next) => {
     }
 };
 
-module.exports = { protect, protectAdmin, protectUser, protectAdminOrShop };
+const protectAny = async (req, res, next) => {
+    let token;
+
+    if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+        try {
+            token = req.headers.authorization.split(" ")[1];
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+            // 1. Try Shop
+            const shop = await Shop.findById(decoded.id).select("-password");
+            if (shop) {
+                req.shop = shop;
+                return next();
+            }
+
+            // 2. Try Admin
+            const admin = await Admin.findById(decoded.id).select("-password");
+            if (admin) {
+                req.admin = admin;
+                return next();
+            }
+
+            // 3. Try User
+            const user = await User.findById(decoded.id).select("-password");
+            if (user) {
+                req.user = user;
+                return next();
+            }
+
+            return res.status(401).json({ message: "Not authorized: account lookup failed" });
+
+        } catch (error) {
+            console.error("Auth Middleware Error:", error.message);
+            return res.status(401).json({ message: "Not authorized: session expired or invalid" });
+        }
+    }
+
+    if (!token) {
+        return res.status(401).json({ message: "Not authorized: no token found" });
+    }
+};
+
+module.exports = { protect, protectAdmin, protectUser, protectAdminOrShop, protectAny };
