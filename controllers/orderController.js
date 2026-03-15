@@ -376,7 +376,24 @@ const updateOrderStatus = async (req, res) => {
         if (trackingUrl !== undefined) order.trackingUrl = trackingUrl;
         if (expectedHandover !== undefined) order.expectedHandover = expectedHandover;
         if (paymentStatus !== undefined) order.paymentStatus = paymentStatus;
-        if (req.body.dispatchProof !== undefined) order.dispatchProof = req.body.dispatchProof;
+        // Handle dispatchProof (File Upload)
+        if (req.file) {
+            try {
+                const result = await uploadToCloudinary(req.file.path, 'dispatch_proofs');
+                order.dispatchProof = result.secure_url;
+            } finally {
+                if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+            }
+        } 
+        // Fallback: If it's a base64 string, we should also handle it (though file is preferred)
+        else if (req.body.dispatchProof && req.body.dispatchProof.startsWith('data:image')) {
+            // Since we don't want to save long strings, we'll ignore it or suggest file upload
+            // For now, let's keep it clean and only allow proper URLs or handle via upload
+            // If they send base64, we don't save it to prevent DB bloat
+            console.log('Received base64 for dispatchProof, ignoring to prevent DB bloat. Please use file upload.');
+        } else if (req.body.dispatchProof !== undefined) {
+            order.dispatchProof = req.body.dispatchProof;
+        }
         
         await order.save();
         

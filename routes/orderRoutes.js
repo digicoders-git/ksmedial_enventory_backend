@@ -34,7 +34,7 @@ router.get('/', protect, getOrders);
 router.post('/seed', protect, createTestOrders);
 router.put('/bulk-status', protect, bulkUpdateOrderStatus);
 router.get('/:id', protect, getOrderById);
-router.put('/:id/status', protect, updateOrderStatus);
+router.put('/:id/status', protect, upload.single('dispatchProof'), updateOrderStatus);
 
 // Prescription Request Routes
 router.get('/prescription/requests', protect, getPrescriptionRequests);
