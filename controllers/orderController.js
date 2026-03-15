@@ -654,7 +654,7 @@ const approvePrescriptionRequest = async (req, res) => {
                 age: 0,
                 phone: request.userId.phone,
                 status: 'Verified',
-                image: 'SYSTEM_APPROVED_VIA_REQUEST',
+                image: request.prescriptionImage || 'https://res.cloudinary.com/drwss54l2/image/upload/v1773429820/inventory_panel_profiles/mnrirlvh2byyvowecmqa.png', // Fallback to a default if empty
                 shop: request.shopId || (req.user ? req.user._id : order._id) // Fallback
             },
             { upsert: true }
