@@ -208,10 +208,13 @@ const placeOrder = async (req, res) => {
         // --- Handle File Upload to Cloudinary ---
         let prescriptionImageUrl = req.body.prescriptionImage; // Fallback to body string if provided
         if (req.file) {
-            const result = await uploadToCloudinary(req.file.path, 'prescriptions');
-            prescriptionImageUrl = result.secure_url;
-            // Cleanup local file
-            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+            try {
+                const result = await uploadToCloudinary(req.file.path, 'prescriptions');
+                prescriptionImageUrl = result.secure_url;
+            } finally {
+                // Always cleanup local temporary file
+                if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+            }
         }
 
         // --- Prescription Request Flow ---
@@ -683,10 +686,13 @@ const uploadAdminPrescription = async (req, res) => {
         let prescriptionImage = req.body.prescriptionImage;
 
         if (req.file) {
-            const result = await uploadToCloudinary(req.file.path, 'prescriptions');
-            prescriptionImage = result.secure_url;
-            // Cleanup
-            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+            try {
+                const result = await uploadToCloudinary(req.file.path, 'prescriptions');
+                prescriptionImage = result.secure_url;
+            } finally {
+                // Always cleanup local temporary file
+                if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+            }
         }
 
         if (!prescriptionImage) {
