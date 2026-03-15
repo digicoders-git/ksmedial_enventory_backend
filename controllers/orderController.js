@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Shop = require('../models/Shop');
 const PrescriptionRequest = require('../models/PrescriptionRequest');
 const Prescription = require('../models/Prescription'); // Added
+const Offer = require('../models/Offer'); // Added
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const fs = require('fs');
 
