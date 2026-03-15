@@ -593,6 +593,7 @@ const submitKYC = async (req, res) => {
 
 // Withdrawal Management
 const Withdrawal = require('../models/Withdrawal');
+
 const getAllWithdrawals = async (req, res) => {
     try {
         const { status } = req.query;
@@ -607,11 +608,39 @@ const getAllWithdrawals = async (req, res) => {
 const updateWithdrawalStatus = async (req, res) => {
     try {
         const { status, rejectReason, referenceId } = req.body;
-        const update = { status };
-        if (rejectReason) update.rejectReason = rejectReason;
-        if (referenceId) update.referenceId = referenceId;
         
-        const withdrawal = await Withdrawal.findByIdAndUpdate(req.params.id, update, { new: true });
+        // Find existing withdrawal
+        const withdrawal = await Withdrawal.findById(req.params.id);
+        if (!withdrawal) {
+            return res.status(404).json({ success: false, message: 'Withdrawal not found' });
+        }
+        
+        // If newly rejecting, refund the wallet balance
+        if (status === 'rejected' && withdrawal.status !== 'rejected') {
+            const User = require('../models/User');
+            const user = await User.findById(withdrawal.userId);
+            if (user) {
+                user.walletBalance += withdrawal.amount;
+                await user.save();
+                
+                // Notify user
+                try {
+                    const Notification = require('../models/Notification');
+                    await Notification.create({
+                        type: 'warning',
+                        title: 'Withdrawal Rejected',
+                        message: `Your withdrawal request for ₹${withdrawal.amount} was rejected. Amount has been refunded to your wallet. Reason: ${rejectReason || 'N/A'}`,
+                        userId: user._id
+                    });
+                } catch (err) { console.error('Notification Error:', err); }
+            }
+        }
+
+        withdrawal.status = status;
+        if (rejectReason) withdrawal.rejectReason = rejectReason;
+        if (referenceId) withdrawal.referenceId = referenceId;
+        
+        await withdrawal.save();
         res.json({ success: true, data: withdrawal });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
