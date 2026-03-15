@@ -522,9 +522,35 @@ const approveKYC = async (req, res) => {
                 referrer.totalEarnings += amount;
                 await referrer.save();
 
+                // Create notification for referrer
+                try {
+                    const Notification = require('../models/Notification');
+                    await Notification.create({
+                        type: 'success',
+                        title: 'Commission Earned!',
+                        message: `You earned ₹${amount} commission from ${currentUser.firstName}'s KYC approval.`,
+                        userId: referrer._id
+                    });
+                } catch (err) {
+                    console.error('Commission Notification Failed:', err);
+                }
+
                 // Move to next parent
                 referrerId = referrer.referredBy;
             }
+        }
+
+        // Create notification for user
+        try {
+            const Notification = require('../models/Notification');
+            await Notification.create({
+                type: 'success',
+                title: 'KYC Approved!',
+                message: 'Your KYC has been successfully verified. You are now eligible for commissions.',
+                userId: kyc.userId
+            });
+        } catch (err) {
+            console.error('KYC Notification Failed:', err);
         }
 
         res.json({ success: true, message: 'KYC Approved and Commission Distributed', data: kyc });

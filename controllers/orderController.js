@@ -236,10 +236,23 @@ const placeOrder = async (req, res) => {
                 // Always cleanup local temporary file
                 if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
             }
-        }        // --- Prescription Request Flow ---
-        // If ANY product in the order requires a prescription, it MUST be verified by Admin
+        }
+        // --- Prescription Required Flow ---
+        // If ANY product in the order requires a prescription
         if (prescriptionRequired) {
-            // 1. Create the actual Order in 'pending' status first
+            // MANDATORY: User MUST upload prescription image to place order
+            if (!prescriptionImageUrl) {
+                return res.status(400).json({
+                    success: false,
+                    prescriptionRequired: true,
+                    requiresPrescription: true,
+                    message: 'Prescription is mandatory for the following products: ' + productsRequiringPrescription.join(', ') + '. Please upload a valid prescription image to proceed with your order.',
+                    productsRequiringPrescription: productsRequiringPrescription,
+                    hint: 'Upload prescription image via the prescriptionImage field OR use /api/orders/request-prescription to request one from our doctor/admin.'
+                });
+            }
+
+            // User HAS uploaded prescription -> Create order in pending status
             const orderNumber = `KS4-${Date.now()}`;
             const order = await Order.create({
                 userId: req.user._id,
@@ -251,20 +264,20 @@ const placeOrder = async (req, res) => {
                 total: finalTotal,
                 shippingAddress,
                 paymentMethod,
-                status: 'pending', // Visible to user as pending
+                status: 'pending',
                 orderType: 'KS4',
                 shopId: firstShopId,
-                prescriptionImage: prescriptionImageUrl ? { url: prescriptionImageUrl } : undefined,
+                prescriptionImage: { url: prescriptionImageUrl },
                 razorpayOrderId,
                 razorpayPaymentId,
                 expectedHandover: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
                 notes
             });
 
-            // 2. Create the Prescription Request linked to this Order
+            // Create Prescription Request for admin verification
             const request = await PrescriptionRequest.create({
                 userId: req.user._id,
-                orderId: order._id, // Link them
+                orderId: order._id,
                 items: orderItems,
                 shippingAddress,
                 paymentMethod,
@@ -277,17 +290,25 @@ const placeOrder = async (req, res) => {
                 prescriptionImage: prescriptionImageUrl
             });
 
-            const userMessage = prescriptionImageUrl
-                ? 'Your prescription has been uploaded and sent for approval. Your order will be confirmed once verified.'
-                : 'Your order requires a prescription. Since you haven\'t uploaded one, our admin/doctor will review your request and provide one. Your order will be confirmed after that.';
+            // Notify user
+            try {
+                const Notification = require('../models/Notification');
+                await Notification.create({
+                    type: 'info',
+                    title: 'Prescription Under Review',
+                    message: `Your prescription for order #${order.orderNumber} has been submitted and is under review.`,
+                    userId: req.user._id
+                });
+            } catch (err) { console.error('Notification Error:', err); }
 
             return res.status(200).json({
                 success: true,
                 isPrescriptionRequest: true,
-                message: userMessage,
+                message: 'Your prescription has been uploaded and sent for approval. Your order will be confirmed once verified.',
                 requestId: request._id,
                 orderId: order._id,
-                hasPrescription: !!prescriptionImageUrl
+                orderNumber: order.orderNumber,
+                hasPrescription: true
             });
         }
 
@@ -850,6 +871,147 @@ const uploadAdminPrescription = async (req, res) => {
     }
 };
 
+
+// @desc    Request prescription from admin/doctor (User does NOT have prescription)
+// @route   POST /api/orders/request-prescription
+// @access  Private (User Token)
+const requestPrescription = async (req, res) => {
+    try {
+        let {
+            items, shippingAddress, paymentMethod = 'COD',
+            offerCode, notes
+        } = req.body;
+
+        if (typeof items === 'string') items = JSON.parse(items);
+        if (typeof shippingAddress === 'string') shippingAddress = JSON.parse(shippingAddress);
+
+        if (!items || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'No items in request' });
+        }
+        if (!shippingAddress) {
+            return res.status(400).json({ success: false, message: 'Shipping address is required' });
+        }
+
+        if (!shippingAddress.name || shippingAddress.name.includes('undefined')) {
+            const userName = (req.user.firstName || req.user.lastName)
+                ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim()
+                : req.user.phone;
+            shippingAddress.name = userName;
+        }
+
+        let subtotal = 0;
+        const orderItems = [];
+        const productsRequiringPrescription = [];
+        let firstShopId = null;
+
+        for (const item of items) {
+            const product = await Product.findById(item.productId);
+            if (!product) {
+                return res.status(404).json({ success: false, message: `Product not found: ${item.productId}` });
+            }
+            if (!firstShopId) firstShopId = product.shopId;
+            const price = product.sellingPrice;
+            subtotal += price * item.quantity;
+            orderItems.push({
+                product: product._id,
+                productName: product.name,
+                productPrice: price,
+                quantity: item.quantity
+            });
+            if (product.isPrescriptionRequired === true || product.isPrescriptionRequired === 'true') {
+                productsRequiringPrescription.push(product.name);
+            }
+        }
+
+        if (productsRequiringPrescription.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'None of the products in your cart require a prescription. Please use the normal order flow.'
+            });
+        }
+
+        let discount = 0;
+        let finalTotal = subtotal;
+        if (offerCode) {
+            const offer = await Offer.findOne({ code: offerCode, isActive: true });
+            if (offer && subtotal >= offer.minOrderAmount) {
+                if (offer.discountType === 'percentage') {
+                    discount = (subtotal * offer.discountValue) / 100;
+                    if (offer.maxDiscountAmount && discount > offer.maxDiscountAmount) discount = offer.maxDiscountAmount;
+                } else {
+                    discount = offer.discountValue;
+                }
+                finalTotal = subtotal - discount;
+                if (finalTotal < 0) finalTotal = 0;
+            }
+        }
+
+        // Create ONLY a PrescriptionRequest (NO order yet)
+        const request = await PrescriptionRequest.create({
+            userId: req.user._id,
+            items: orderItems,
+            shippingAddress,
+            paymentMethod,
+            subtotal,
+            discount,
+            offerCode,
+            total: finalTotal,
+            status: 'pending',
+            shopId: firstShopId
+        });
+
+        try {
+            const Notification = require('../models/Notification');
+            await Notification.create({
+                type: 'info',
+                title: 'Prescription Requested',
+                message: 'Your prescription request has been sent to our doctor/admin. Once provided, your order will be placed automatically.',
+                userId: req.user._id
+            });
+        } catch (err) { console.error('Notification Error:', err); }
+
+        res.status(200).json({
+            success: true,
+            isPrescriptionRequest: true,
+            hasPrescription: false,
+            message: 'Your prescription request has been sent to our admin/doctor. Once they provide the prescription, your order will be placed and confirmed automatically.',
+            requestId: request._id,
+            productsRequiringPrescription
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Get my prescription requests (User)
+// @route   GET /api/orders/my-prescription-requests
+// @access  Private (User Token)
+const getMyPrescriptionRequests = async (req, res) => {
+    try {
+        const requests = await PrescriptionRequest.find({ userId: req.user._id })
+            .populate('orderId', 'orderNumber status')
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: requests.length,
+            requests: requests.map(r => ({
+                _id: r._id,
+                items: r.items,
+                status: r.status,
+                prescriptionImage: r.prescriptionImage || null,
+                orderId: r.orderId ? r.orderId._id : null,
+                orderNumber: r.orderId ? r.orderId.orderNumber : null,
+                orderStatus: r.orderId ? r.orderId.status : null,
+                createdAt: r.createdAt,
+                updatedAt: r.updatedAt
+            }))
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     // User facing
     getMyOrders,
@@ -857,6 +1019,8 @@ module.exports = {
     trackOrder,
     placeOrder,
     cancelMyOrder,
+    requestPrescription,
+    getMyPrescriptionRequests,
     // Admin / Shop facing
     getOrders,
     getOrderById,
