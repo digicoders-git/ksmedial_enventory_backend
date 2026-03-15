@@ -9,7 +9,7 @@ const {
     clearAllPurchaseReturns
 } = require('../controllers/purchaseReturnController');
 const { protect } = require('../middleware/authMiddleware');
-const upload = require('../middleware/uploadMiddleware');
+const { upload } = require('../middleware/uploadMiddleware');
 
 router.use(protect);
 

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { loginShop, registerUser, loginUser, getUserProfile, updateUserProfile, sendOTP, verifyOTP } = require('../controllers/authController');
 const { protectUser } = require('../middleware/authMiddleware');
-const upload = require('../middleware/uploadMiddleware');
+const { upload } = require('../middleware/uploadMiddleware');
 
 router.post('/login', loginShop);
 router.post('/register', registerUser);

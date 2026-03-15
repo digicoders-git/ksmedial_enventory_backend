@@ -8,7 +8,7 @@ const {
     completePutAway
 } = require('../controllers/saleReturnController');
 const { protect } = require('../middleware/authMiddleware');
-const upload = require('../middleware/uploadMiddleware');
+const { upload } = require('../middleware/uploadMiddleware');
 
 router.use(protect);
 

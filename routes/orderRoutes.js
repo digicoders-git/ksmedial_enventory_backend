@@ -16,7 +16,7 @@ const {
     uploadAdminPrescription
 } = require('../controllers/orderController');
 const { protect, protectUser, protectAdminOrShop } = require('../middleware/authMiddleware');
-const upload = require('../middleware/uploadMiddleware');
+const { upload } = require('../middleware/uploadMiddleware');
 
 // ==========================================
 // USER ROUTES (User Token)

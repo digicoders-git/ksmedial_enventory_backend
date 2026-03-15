@@ -35,10 +35,13 @@ app.use(express.urlencoded({ limit: '500mb', extended: true }));
 // Serve Uploads
 const path = require('path');
 const uploadsDir = path.resolve('uploads');
+const inventoryImagesDir = path.resolve('inventry_image');
+
 app.use('/uploads', express.static(uploadsDir));
 app.use('/api/uploads', express.static(uploadsDir));
 
-// Basic Route
+app.use('/inventry_image', express.static(inventoryImagesDir));
+app.use('/api/inventry_image', express.static(inventoryImagesDir));
 app.get('/', (req, res) => {
     res.send('API is running...');
 });

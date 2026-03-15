@@ -1,8 +1,8 @@
 const Product = require('../models/Product');
 const InventoryLog = require('../models/InventoryLog');
 const Sale = require('../models/Sale');
-const { uploadToCloudinary } = require('../utils/cloudinary');
 const fs = require('fs');
+const path = require('path');
 
 // @desc    Get all products for a shop
 // @route   GET /api/products
@@ -81,14 +81,21 @@ const createProduct = async (req, res) => {
 
         let imageUrl = image;
 
-        // Handle Image Upload (Multer or Base64)
+        // Handle Local Image Upload (inventry_image folder)
         if (req.file) {
-            const result = await uploadToCloudinary(req.file.path);
-            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-            imageUrl = result.secure_url;
+            // Already saved to inventry_image folder by productUpload middleware
+            // Return FULL URL for frontend to display without changes
+            imageUrl = `${req.protocol}://${req.get('host')}/inventry_image/${req.file.originalname}`;
         } else if (image && image.startsWith('data:image')) {
-            const result = await uploadToCloudinary(image);
-            imageUrl = result.secure_url;
+            // If base64 is sent, we also save it locally as per requirement
+            const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
+            const fileName = `base64-${Date.now()}.png`;
+            const localPath = path.join(process.cwd(), 'inventry_image', fileName);
+            fs.writeFileSync(localPath, base64Data, 'base64');
+            imageUrl = `${req.protocol}://${req.get('host')}/inventry_image/${fileName}`;
+        } else if (image && !image.startsWith('http')) {
+            // If it's just a filename (e.g. from CSV), prefix it with local local path
+            imageUrl = `${req.protocol}://${req.get('host')}/inventry_image/${image}`;
         }
 
         const product = await Product.create({
@@ -130,14 +137,18 @@ const updateProduct = async (req, res) => {
 
         let updateData = { ...req.body };
 
-        // Handle Image Update
+        // Handle Local Image Update
         if (req.file) {
-            const result = await uploadToCloudinary(req.file.path);
-            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-            updateData.image = result.secure_url;
+            updateData.image = `${req.protocol}://${req.get('host')}/inventry_image/${req.file.originalname}`;
         } else if (req.body.image && req.body.image.startsWith('data:image')) {
-            const result = await uploadToCloudinary(req.body.image);
-            updateData.image = result.secure_url;
+            const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
+            const fileName = `base64-${Date.now()}.png`;
+            const localPath = path.join(process.cwd(), 'inventry_image', fileName);
+            fs.writeFileSync(localPath, base64Data, 'base64');
+            updateData.image = `${req.protocol}://${req.get('host')}/inventry_image/${fileName}`;
+        } else if (req.body.image && !req.body.image.startsWith('http')) {
+            // If it's just a filename (e.g. from CSV), prefix it with local local path
+            updateData.image = `${req.protocol}://${req.get('host')}/inventry_image/${req.body.image}`;
         }
 
         product = await Product.findByIdAndUpdate(req.params.id, updateData, {
