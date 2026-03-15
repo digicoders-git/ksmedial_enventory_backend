@@ -608,11 +608,13 @@ const bulkUpdateOrderStatus = async (req, res) => {
 // @access  Private (Admin)
 const getPrescriptionRequests = async (req, res) => {
     try {
-        // Filter by shopId to ensure shops only see their own requests
-        const requests = await PrescriptionRequest.find({
-            status: 'pending',
-            shopId: req.shop._id
-        })
+        // If Admin, show all. If Shop, show only their own.
+        const query = { status: 'pending' };
+        if (req.shop) {
+            query.shopId = req.shop._id;
+        }
+
+        const requests = await PrescriptionRequest.find(query)
             .populate('userId', 'firstName lastName phone email')
             .sort({ createdAt: -1 });
 

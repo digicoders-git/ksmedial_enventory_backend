@@ -15,7 +15,7 @@ const {
     approvePrescriptionRequest,
     uploadAdminPrescription
 } = require('../controllers/orderController');
-const { protect, protectUser } = require('../middleware/authMiddleware');
+const { protect, protectUser, protectAdminOrShop } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
 // ==========================================
@@ -28,17 +28,17 @@ router.get('/track/:identifier', protectUser, trackOrder);
 router.put('/my-orders/:id/cancel', protectUser, cancelMyOrder);
 
 // ==========================================
-// ADMIN / SHOP ROUTES (Shop Token)
+// ADMIN / SHOP ROUTES (Dual Token Support)
 // ==========================================
-router.get('/', protect, getOrders);
+router.get('/', protectAdminOrShop, getOrders);
 router.post('/seed', protect, createTestOrders);
-router.put('/bulk-status', protect, bulkUpdateOrderStatus);
-router.get('/:id', protect, getOrderById);
-router.put('/:id/status', protect, upload.single('dispatchProof'), updateOrderStatus);
+router.put('/bulk-status', protectAdminOrShop, bulkUpdateOrderStatus);
+router.get('/:id', protectAdminOrShop, getOrderById);
+router.put('/:id/status', protectAdminOrShop, upload.single('dispatchProof'), updateOrderStatus);
 
-// Prescription Request Routes
-router.get('/prescription/requests', protect, getPrescriptionRequests);
-router.put('/prescription/requests/:id/approve', protect, approvePrescriptionRequest);
-router.put('/prescription/requests/:id/upload', protect, upload.single('prescriptionImage'), uploadAdminPrescription);
+// Prescription Request Routes (Now accessible by both Admin and Shop)
+router.get('/prescription/requests', protectAdminOrShop, getPrescriptionRequests);
+router.put('/prescription/requests/:id/approve', protectAdminOrShop, approvePrescriptionRequest);
+router.put('/prescription/requests/:id/upload', protectAdminOrShop, upload.single('prescriptionImage'), uploadAdminPrescription);
 
 module.exports = router;
