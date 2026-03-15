@@ -609,7 +609,7 @@ const bulkUpdateOrderStatus = async (req, res) => {
 const getPrescriptionRequests = async (req, res) => {
     try {
         // If Admin, show all. If Shop, show only their own.
-        const query = { status: 'pending' };
+        let query = { status: 'pending' }; // Show all pending prescription requests
         if (req.shop) {
             query.shopId = req.shop._id;
         }
