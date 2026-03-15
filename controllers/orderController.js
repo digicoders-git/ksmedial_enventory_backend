@@ -215,12 +215,34 @@ const placeOrder = async (req, res) => {
                 // Always cleanup local temporary file
                 if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
             }
-        }
-        // --- Prescription Request Flow ---
+        }        // --- Prescription Request Flow ---
         // If ANY product in the order requires a prescription, it MUST be verified by Admin
         if (prescriptionRequired) {
+            // 1. Create the actual Order in 'pending' status first
+            const orderNumber = `KS4-${Date.now()}`;
+            const order = await Order.create({
+                userId: req.user._id,
+                orderNumber,
+                items: orderItems,
+                subtotal,
+                discount: discount || 0,
+                offerCode,
+                total: finalTotal,
+                shippingAddress,
+                paymentMethod,
+                status: 'pending', // Visible to user as pending
+                orderType: 'KS4',
+                shopId: firstShopId,
+                prescriptionImage: prescriptionImageUrl ? { url: prescriptionImageUrl } : undefined,
+                razorpayOrderId,
+                razorpayPaymentId,
+                notes
+            });
+
+            // 2. Create the Prescription Request linked to this Order
             const request = await PrescriptionRequest.create({
                 userId: req.user._id,
+                orderId: order._id, // Link them
                 items: orderItems,
                 shippingAddress,
                 paymentMethod,
@@ -242,6 +264,7 @@ const placeOrder = async (req, res) => {
                 isPrescriptionRequest: true,
                 message: userMessage,
                 requestId: request._id,
+                orderId: order._id,
                 hasPrescription: !!prescriptionImageUrl
             });
         }
@@ -648,24 +671,35 @@ const approvePrescriptionRequest = async (req, res) => {
         if (request.status !== 'pending') {
             return res.status(400).json({ success: false, message: `Request is already ${request.status}` });
         }
+        // Update the linked order
+        let order = null;
+        if (request.orderId) {
+            order = await Order.findById(request.orderId);
+            if (order) {
+                order.status = 'confirmed';
+                await order.save();
+            }
+        }
 
-        // Create the actual order
-        const orderNumber = `KS4-${Date.now()}`;
-        const order = await Order.create({
-            userId: request.userId,
-            orderNumber,
-            items: request.items,
-            subtotal: request.subtotal,
-            discount: request.discount || 0,
-            offerCode: request.offerCode,
-            total: request.total,
-            shippingAddress: request.shippingAddress,
-            paymentMethod: request.paymentMethod,
-            status: 'pending',
-            orderType: 'KS4',
-            shopId: request.shopId,
-            prescriptionImage: request.prescriptionImage ? { url: request.prescriptionImage } : undefined
-        });
+        // If for some reason the order wasn't found (legacy requests), create it now
+        if (!order) {
+            const orderNumber = `KS4-${Date.now()}`;
+            order = await Order.create({
+                userId: request.userId,
+                orderNumber,
+                items: request.items,
+                subtotal: request.subtotal,
+                discount: request.discount || 0,
+                offerCode: request.offerCode,
+                total: request.total,
+                shippingAddress: request.shippingAddress,
+                paymentMethod: request.paymentMethod,
+                status: 'confirmed', // Created as confirmed
+                orderType: 'KS4',
+                shopId: request.shopId,
+                prescriptionImage: request.prescriptionImage ? { url: request.prescriptionImage } : undefined
+            });
+        }
 
         request.status = 'approved';
         request.orderId = order._id;
@@ -733,24 +767,36 @@ const uploadAdminPrescription = async (req, res) => {
 
         // 1. Update the image in the request
         request.prescriptionImage = prescriptionImage;
+        // 2. Update the linked order
+        let order = null;
+        if (request.orderId) {
+            order = await Order.findById(request.orderId);
+            if (order) {
+                order.status = 'confirmed';
+                order.prescriptionImage = { url: prescriptionImage };
+                await order.save();
+            }
+        }
 
-        // 2. Automatically APPROVE and CREATE the order as per the "confirm" concept
-        const orderNumber = `KS4-${Date.now()}`;
-        const order = await Order.create({
-            userId: request.userId,
-            orderNumber,
-            items: request.items,
-            subtotal: request.subtotal,
-            discount: request.discount || 0,
-            offerCode: request.offerCode,
-            total: request.total,
-            shippingAddress: request.shippingAddress,
-            paymentMethod: request.paymentMethod,
-            status: 'pending',
-            orderType: 'KS4',
-            shopId: request.shopId,
-            prescriptionImage: { url: prescriptionImage }
-        });
+        // Create if missing (legacy)
+        if (!order) {
+            const orderNumber = `KS4-${Date.now()}`;
+            order = await Order.create({
+                userId: request.userId,
+                orderNumber,
+                items: request.items,
+                subtotal: request.subtotal,
+                discount: request.discount || 0,
+                offerCode: request.offerCode,
+                total: request.total,
+                shippingAddress: request.shippingAddress,
+                paymentMethod: request.paymentMethod,
+                status: 'confirmed',
+                orderType: 'KS4',
+                shopId: request.shopId,
+                prescriptionImage: { url: prescriptionImage }
+            });
+        }
 
         request.status = 'approved';
         request.orderId = order._id;
