@@ -36,7 +36,7 @@ const productStorage = multer.diskStorage({
 // Init general upload
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 500 * 1024 * 1024 },
+    limits: { fileSize: 1000 * 1024 * 1024 }, // 1GB limit
     fileFilter: function (req, file, cb) {
         cb(null, true);
     }
@@ -45,7 +45,7 @@ const upload = multer({
 // Init product specific upload
 const productUpload = multer({
     storage: productStorage,
-    limits: { fileSize: 50 * 1024 * 1024 },
+    limits: { fileSize: 1000 * 1024 * 1024 }, // 1GB limit
     fileFilter: function (req, file, cb) {
         cb(null, true);
     }
