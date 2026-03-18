@@ -15,7 +15,8 @@ const {
     approvePrescriptionRequest,
     uploadAdminPrescription,
     requestPrescription,
-    getMyPrescriptionRequests
+    getMyPrescriptionRequests,
+    rejectPrescriptionRequest
 } = require('../controllers/orderController');
 const { protect, protectUser, protectAdminOrShop } = require('../middleware/authMiddleware');
 const { upload } = require('../middleware/uploadMiddleware');
@@ -23,7 +24,9 @@ const { upload } = require('../middleware/uploadMiddleware');
 // ==========================================
 // USER ROUTES (User Token)
 // ==========================================
-router.post('/place', protectUser, upload.single('prescriptionImage'), placeOrder);
+// Use upload.any() temporarily to see what the consumer app is sending, 
+// or at least capture the image regardless of field name.
+router.post('/place', protectUser, upload.any(), placeOrder);
 router.post('/request-prescription', protectUser, requestPrescription);
 router.get('/my-prescription-requests', protectUser, getMyPrescriptionRequests);
 router.get('/my-orders', protectUser, getMyOrders);
@@ -41,6 +44,7 @@ router.put('/bulk-status', protectAdminOrShop, bulkUpdateOrderStatus);
 // Prescription Request Routes (Now accessible by both Admin and Shop)
 router.get('/prescription/requests', protectAdminOrShop, getPrescriptionRequests);
 router.put('/prescription/requests/:id/approve', protectAdminOrShop, approvePrescriptionRequest);
+router.put('/prescription/requests/:id/reject', protectAdminOrShop, rejectPrescriptionRequest);
 router.put('/prescription/requests/:id/upload', protectAdminOrShop, upload.single('prescriptionImage'), uploadAdminPrescription);
 
 router.get('/:id', protectAdminOrShop, getOrderById);

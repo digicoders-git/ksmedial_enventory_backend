@@ -75,6 +75,9 @@ const orderSchema = new mongoose.Schema(
       publicId: { type: String },
     },
     
+    // If true, this order is waiting for prescription approval - hide from online-orders
+    prescriptionPending: { type: Boolean, default: false },
+    
     // Added for Inventory Panel Workflow
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
     problemDescription: { type: String },

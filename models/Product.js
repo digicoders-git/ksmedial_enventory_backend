@@ -41,7 +41,7 @@ const productSchema = new mongoose.Schema(
         price: Number,
         isDefault: Boolean
     }],
-    schedule: { type: String, default: 'H' },
+    schedule: { type: String, default: '' },
     nppaMrp: { type: Number, default: 0 },
     manufacturingDate: { type: String, default: 'N/A' },
     isInventoryLive: { type: Boolean, default: false },

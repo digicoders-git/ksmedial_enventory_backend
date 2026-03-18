@@ -4,8 +4,8 @@ const Product = require('../models/Product');
 const User = require('../models/User');
 const Shop = require('../models/Shop');
 const PrescriptionRequest = require('../models/PrescriptionRequest');
-const Prescription = require('../models/Prescription'); // Added
-const Offer = require('../models/Offer'); // Added
+const Prescription = require('../models/Prescription');
+const Offer = require('../models/Offer');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const fs = require('fs');
 
@@ -72,7 +72,6 @@ const trackOrder = async (req, res) => {
     try {
         const { identifier } = req.params;
 
-        // Find by orderNumber OR _id
         const query = mongoose.Types.ObjectId.isValid(identifier)
             ? { $or: [{ _id: identifier }, { orderNumber: identifier }], userId: req.user._id }
             : { orderNumber: identifier, userId: req.user._id };
@@ -84,7 +83,6 @@ const trackOrder = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
 
-        // Build timeline from status
         const isConfirmed = ['confirmed', 'shipped', 'delivered', 'Picking', 'Packing', 'Quality Check', 'Scanned For Shipping', 'On Hold', 'Billing'].includes(order.status);
         const isProcessing = ['shipped', 'delivered', 'Picking', 'Packing', 'Quality Check', 'Scanned For Shipping', 'Billing'].includes(order.status);
         const isShipped = ['shipped', 'delivered', 'Scanned For Shipping'].includes(order.status);
@@ -92,26 +90,10 @@ const trackOrder = async (req, res) => {
 
         const statusTimeline = [
             { step: 'Order Placed', done: true, time: order.createdAt },
-            { 
-                step: 'Confirmed', 
-                done: isConfirmed, 
-                time: isConfirmed ? (order.status === 'confirmed' ? order.updatedAt : order.createdAt) : null 
-            },
-            { 
-                step: 'Processing', 
-                done: isProcessing, 
-                time: isProcessing ? order.updatedAt : null 
-            },
-            { 
-                step: 'Shipped', 
-                done: isShipped, 
-                time: isShipped ? order.updatedAt : null 
-            },
-            { 
-                step: 'Delivered', 
-                done: isDelivered, 
-                time: isDelivered ? order.updatedAt : null 
-            }
+            { step: 'Confirmed', done: isConfirmed, time: isConfirmed ? (order.status === 'confirmed' ? order.updatedAt : order.createdAt) : null },
+            { step: 'Processing', done: isProcessing, time: isProcessing ? order.updatedAt : null },
+            { step: 'Shipped', done: isShipped, time: isShipped ? order.updatedAt : null },
+            { step: 'Delivered', done: isDelivered, time: isDelivered ? order.updatedAt : null }
         ];
 
         res.json({
@@ -147,7 +129,6 @@ const placeOrder = async (req, res) => {
             razorpayOrderId, razorpayPaymentId
         } = req.body;
 
-        // Parse fields if they come as strings (for FormData)
         if (typeof items === 'string') items = JSON.parse(items);
         if (typeof shippingAddress === 'string') shippingAddress = JSON.parse(shippingAddress);
 
@@ -158,7 +139,6 @@ const placeOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Shipping address is required' });
         }
 
-        // --- Fix "undefined undefined" name in shipping address ---
         if (!shippingAddress.name || shippingAddress.name.includes('undefined')) {
             const userName = (req.user.firstName || req.user.lastName)
                 ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim()
@@ -182,16 +162,24 @@ const placeOrder = async (req, res) => {
 
             const price = product.sellingPrice;
             subtotal += price * item.quantity;
-            orderItems.push({
+            const newItem = {
                 product: product._id,
                 productName: product.name,
                 productPrice: price,
-                quantity: item.quantity
-            });
+                quantity: item.quantity,
+                supplierSkuId: product.sku || product.skuId || product.SKU || product.barcode || '',
+                skuId: product.sku || product.skuId || product.SKU || product.barcode || '',
+                pack: product.packing || product.packSize || '',
+            };
+            orderItems.push(newItem);
 
-            // Check if this specific product needs a prescription
-            // Ensure comparison is robust (handle string "true" if needed)
-            if (product.isPrescriptionRequired === true || product.isPrescriptionRequired === 'true') {
+            // Prescription check: ONLY use the explicit isPrescriptionRequired flag on the product
+            // Also check if item-level flag is sent by consumer app
+            if (
+                product.isPrescriptionRequired === true ||
+                item.isPrescriptionRequired === true ||
+                item.isPrescriptionRequired === 'true'
+            ) {
                 prescriptionRequired = true;
                 productsRequiringPrescription.push(product.name);
             }
@@ -206,13 +194,9 @@ const placeOrder = async (req, res) => {
             if (!offer) {
                 return res.status(400).json({ success: false, message: 'Invalid or expired offer code' });
             }
-
-            // Check Minimum Order Amount
             if (subtotal < offer.minOrderAmount) {
                 return res.status(400).json({ success: false, message: `Minimum order amount for this offer is ₹${offer.minOrderAmount}` });
             }
-
-            // Calculate Discount
             if (offer.discountType === 'percentage') {
                 discount = (subtotal * offer.discountValue) / 100;
                 if (offer.maxDiscountAmount && discount > offer.maxDiscountAmount) {
@@ -221,63 +205,40 @@ const placeOrder = async (req, res) => {
             } else {
                 discount = offer.discountValue;
             }
-
             finalTotal = subtotal - discount;
             if (finalTotal < 0) finalTotal = 0;
         }
 
         // --- Handle File Upload to Cloudinary ---
-        let prescriptionImageUrl = req.body.prescriptionImage; // Fallback to body string if provided
-        if (req.file) {
+        let prescriptionImageUrl = req.body.prescriptionImage || req.body.prescriptionImageUrl || req.body.prescription;
+        
+        // SUPPORT: If frontend explicitly says this is a prescription order
+        const explicitlyRequested = req.body.requestPrescription === true || 
+                                     req.body.requestPrescription === 'true' ||
+                                     req.body.isPrescriptionOrder === true ||
+                                     req.body.isPrescriptionOrder === 'true';
+        
+        // Support any files from multer regardless of name
+        const anyFileUpload = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+        // If user sent a file, mark as prescription flow regardless of upload success
+        const userSentFile = !!anyFileUpload;
+        
+        if (anyFileUpload) {
             try {
-                const result = await uploadToCloudinary(req.file.path, 'prescriptions');
-                prescriptionImageUrl = result.secure_url;
+                const result = await uploadToCloudinary(anyFileUpload.path, 'prescriptions');
+                prescriptionImageUrl = result?.secure_url || prescriptionImageUrl;
+            } catch (uploadErr) {
+                console.error('Cloudinary upload error:', uploadErr);
             } finally {
-                // Always cleanup local temporary file
-                if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+                if (fs.existsSync(anyFileUpload.path)) fs.unlinkSync(anyFileUpload.path);
             }
         }
+
         // --- Prescription Required Flow ---
-        // If ANY product in the order requires a prescription
-        if (prescriptionRequired) {
-            // MANDATORY: User MUST upload prescription image to place order
-            if (!prescriptionImageUrl) {
-                return res.status(400).json({
-                    success: false,
-                    prescriptionRequired: true,
-                    requiresPrescription: true,
-                    message: 'Prescription is mandatory for the following products: ' + productsRequiringPrescription.join(', ') + '. Please upload a valid prescription image to proceed with your order.',
-                    productsRequiringPrescription: productsRequiringPrescription,
-                    hint: 'Upload prescription image via the prescriptionImage field OR use /api/orders/request-prescription to request one from our doctor/admin.'
-                });
-            }
-
-            // User HAS uploaded prescription -> Create order in pending status
-            const orderNumber = `KS4-${Date.now()}`;
-            const order = await Order.create({
-                userId: req.user._id,
-                orderNumber,
-                items: orderItems,
-                subtotal,
-                discount: discount || 0,
-                offerCode,
-                total: finalTotal,
-                shippingAddress,
-                paymentMethod,
-                status: 'pending',
-                orderType: 'KS4',
-                shopId: firstShopId,
-                prescriptionImage: { url: prescriptionImageUrl },
-                razorpayOrderId,
-                razorpayPaymentId,
-                expectedHandover: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-                notes
-            });
-
-            // Create Prescription Request for admin verification
+        // Goes to PrescriptionRequest if: product needs Rx, OR user uploaded a file, OR explicitly requested
+        if (prescriptionRequired || userSentFile || prescriptionImageUrl || explicitlyRequested) {
             const request = await PrescriptionRequest.create({
                 userId: req.user._id,
-                orderId: order._id,
                 items: orderItems,
                 shippingAddress,
                 paymentMethod,
@@ -287,32 +248,43 @@ const placeOrder = async (req, res) => {
                 total: finalTotal,
                 status: 'pending',
                 shopId: firstShopId,
-                prescriptionImage: prescriptionImageUrl
+                prescriptionImage: prescriptionImageUrl || undefined
             });
 
-            // Notify user
             try {
                 const Notification = require('../models/Notification');
                 await Notification.create({
                     type: 'info',
-                    title: 'Prescription Under Review',
-                    message: `Your prescription for order #${order.orderNumber} has been submitted and is under review.`,
+                    title: 'Prescription Verification Pending',
+                    message: prescriptionImageUrl 
+                        ? `Your prescription is under review. Your order will be confirmed once verified.`
+                        : `Your order requires a prescription which has been requested. It will be confirmed once the prescription is provided and verified.`,
                     userId: req.user._id
                 });
             } catch (err) { console.error('Notification Error:', err); }
 
-            return res.status(200).json({
+            return res.status(201).json({
                 success: true,
                 isPrescriptionRequest: true,
-                message: 'Your prescription has been uploaded and sent for approval. Your order will be confirmed once verified.',
+                message: prescriptionImageUrl 
+                    ? 'Your prescription has been received. Your order will be confirmed once verified by our team.'
+                    : 'Your order requires a prescription verification. Once verified/provided by our admin, your order will be confirmed.',
                 requestId: request._id,
-                orderId: order._id,
-                orderNumber: order.orderNumber,
-                hasPrescription: true
+                hasPrescription: !!(prescriptionImageUrl || userSentFile)
             });
         }
 
+        // --- FINAL SAFETY GATE ---
+        if (prescriptionRequired || userSentFile || prescriptionImageUrl || explicitlyRequested) {
+            return res.status(201).json({
+                success: true,
+                isPrescriptionRequest: true,
+                message: 'Processing as prescription request...',
+                requestId: 'RETRY-SAFETY'
+            });
+        }
 
+        // --- Normal Order Flow (no prescription needed) ---
         const orderNumber = `KS4-${Date.now()}`;
 
         const order = await Order.create({
@@ -320,7 +292,7 @@ const placeOrder = async (req, res) => {
             orderNumber,
             items: orderItems,
             subtotal,
-            discount: discount,
+            discount,
             total: finalTotal,
             shippingAddress,
             paymentMethod,
@@ -331,6 +303,7 @@ const placeOrder = async (req, res) => {
             razorpayPaymentId,
             orderType: 'KS4',
             shopId: firstShopId,
+            prescriptionPending: false,
             prescriptionImage: prescriptionImageUrl ? { url: prescriptionImageUrl } : undefined
         });
 
@@ -360,16 +333,12 @@ const placeOrder = async (req, res) => {
 // @access  Private
 const getOrders = async (req, res) => {
     try {
-        const shopId = req.shop._id;
-        // Since Admin Panel orders might not have shopId, we might fetch all
-        // Or filter if we add shopId to them.
-        // For now, let's fetch all orders if they share the same DB.
-        const orders = await Order.find()
+        // Exclude orders that are pending prescription approval
+        const orders = await Order.find({ prescriptionPending: { $ne: true } })
             .sort({ createdAt: -1 })
             .populate('userId', 'firstName lastName email phone')
             .populate('items.product', 'name sku');
 
-        // Map to ensure name is never "undefined undefined"
         const formattedOrders = orders.map(order => {
             const orderObj = order.toObject();
             if (orderObj.userId) {
@@ -380,10 +349,7 @@ const getOrders = async (req, res) => {
             return orderObj;
         });
 
-        res.json({
-            success: true,
-            orders: formattedOrders
-        });
+        res.json({ success: true, orders: formattedOrders });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -409,10 +375,7 @@ const getOrderById = async (req, res) => {
                 : orderObj.userId.phone || 'Unknown User';
         }
 
-        res.json({
-            success: true,
-            order: orderObj
-        });
+        res.json({ success: true, order: orderObj });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -423,31 +386,20 @@ const getOrderById = async (req, res) => {
 // @access  Private (Shop Token)
 const updateOrderStatus = async (req, res) => {
     try {
-        const {
-            status,
-            problemDescription,
-            trackingId,
-            trackingUrl,
-            expectedHandover,
-            paymentStatus
-        } = req.body;
+        const { status, problemDescription, trackingId, trackingUrl, expectedHandover, paymentStatus } = req.body;
 
         const order = await Order.findById(req.params.id);
-
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
 
-        // Update status
         if (status !== undefined) order.status = status;
         if (problemDescription !== undefined) order.problemDescription = problemDescription;
-
-        // Update tracking info (user dekh sakta hai)
         if (trackingId !== undefined) order.trackingId = trackingId;
         if (trackingUrl !== undefined) order.trackingUrl = trackingUrl;
         if (expectedHandover !== undefined) order.expectedHandover = expectedHandover;
         if (paymentStatus !== undefined) order.paymentStatus = paymentStatus;
-        // Handle dispatchProof (File Upload)
+
         if (req.file) {
             try {
                 const result = await uploadToCloudinary(req.file.path, 'dispatch_proofs');
@@ -455,24 +407,12 @@ const updateOrderStatus = async (req, res) => {
             } finally {
                 if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
             }
-        }
-        // Fallback: If it's a base64 string, we should also handle it (though file is preferred)
-        else if (req.body.dispatchProof && req.body.dispatchProof.startsWith('data:image')) {
-            // Since we don't want to save long strings, we'll ignore it or suggest file upload
-            // For now, let's keep it clean and only allow proper URLs or handle via upload
-            // If they send base64, we don't save it to prevent DB bloat
-            console.log('Received base64 for dispatchProof, ignoring to prevent DB bloat. Please use file upload.');
-        } else if (req.body.dispatchProof !== undefined) {
+        } else if (req.body.dispatchProof && !req.body.dispatchProof.startsWith('data:image')) {
             order.dispatchProof = req.body.dispatchProof;
         }
 
         await order.save();
-
-        res.json({
-            success: true,
-            message: 'Order updated successfully',
-            order
-        });
+        res.json({ success: true, message: 'Order updated successfully', order });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -484,65 +424,38 @@ const updateOrderStatus = async (req, res) => {
 const createTestOrders = async (req, res) => {
     try {
         let shopId = req.shop ? req.shop._id : null;
-
-        // Ensure Shop Exists
         if (!shopId) {
             const shop = await Shop.findOne();
             if (shop) {
                 shopId = shop._id;
             } else {
-                // Create dummy shop if absolutely no shop exists
                 const newShop = await Shop.create({
-                    shopName: 'Test Shop',
-                    ownerName: 'Test Owner',
-                    contactNumber: '9999999999',
-                    address: 'Test Address',
-                    city: 'Test City',
-                    state: 'Test State',
-                    pincode: '000000',
-                    username: 'testshop',
-                    password: 'password123', // In real app, hash this
-                    email: 'testshop@example.com'
+                    shopName: 'Test Shop', ownerName: 'Test Owner', contactNumber: '9999999999',
+                    address: 'Test Address', city: 'Test City', state: 'Test State',
+                    pincode: '000000', username: 'testshop', password: 'password123', email: 'testshop@example.com'
                 });
                 shopId = newShop._id;
             }
         }
 
-        // Find a user or create a dummy one
-        let user = await User.findOne({ role: 'user' }); // Prefer a customer role
-        if (!user) user = await User.findOne(); // Fallback to any user
-
+        let user = await User.findOne({ role: 'user' });
+        if (!user) user = await User.findOne();
         if (!user) {
             user = await User.create({
-                name: 'Test Customer',
-                email: `customer${Date.now()}@test.com`,
-                password: 'password123',
-                phone: '9876543210',
-                role: 'user'
+                name: 'Test Customer', email: `customer${Date.now()}@test.com`,
+                password: 'password123', phone: '9876543210', role: 'user'
             });
         }
 
-        // Find some products
-        let products = await Product.find({ shopId: shopId }).limit(5);
-
-        // If no products for this shop, try to find ANY products or create dummy
+        let products = await Product.find({ shopId }).limit(5);
+        if (products.length === 0) products = await Product.find().limit(5);
         if (products.length === 0) {
-            products = await Product.find().limit(5); // Fallback to any products
-
-            if (products.length === 0) {
-                // Create dummy product if none
-                const dummyProduct = await Product.create({
-                    name: 'Test Medicine Paracetamol',
-                    sku: `TEST-PARA-${Date.now()}`,
-                    description: 'Test Description',
-                    purchasePrice: 100,
-                    sellingPrice: 150,
-                    quantity: 100,
-                    category: 'Medicine',
-                    shopId: shopId
-                });
-                products = [dummyProduct];
-            }
+            const dummyProduct = await Product.create({
+                name: 'Test Medicine Paracetamol', sku: `TEST-PARA-${Date.now()}`,
+                description: 'Test', purchasePrice: 100, sellingPrice: 150, quantity: 100,
+                category: 'Medicine', shopId
+            });
+            products = [dummyProduct];
         }
 
         const statuses = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'Picking', 'On Hold', 'Packing', 'Problem Queue', 'Picklist Generated', 'Quality Check', 'Scanned For Shipping', 'Unallocated', 'Billing'];
@@ -553,54 +466,30 @@ const createTestOrders = async (req, res) => {
         for (let i = 0; i < 5; i++) {
             const randomProduct = products[Math.floor(Math.random() * products.length)];
             const qty = Math.floor(Math.random() * 5) + 1;
-            const price = randomProduct.sellingPrice || randomProduct.price || 100;
-
-            const item = {
-                product: randomProduct._id,
-                productName: randomProduct.name,
-                productPrice: price,
-                quantity: qty
-            };
-
+            const price = randomProduct.sellingPrice || 100;
             const subtotal = price * qty;
-
             const uniqueSuffix = `${Date.now()}-${i}`;
             orders.push({
                 orderNumber: `ORD-${uniqueSuffix}`,
                 userId: user._id,
-                items: [item],
-                subtotal: subtotal,
-                total: subtotal,
+                items: [{ product: randomProduct._id, productName: randomProduct.name, productPrice: price, quantity: qty }],
+                subtotal, total: subtotal,
                 status: statuses[Math.floor(Math.random() * statuses.length)],
                 paymentMethod: paymentMethods[Math.floor(Math.random() * paymentMethods.length)],
                 shippingAddress: {
-                    name: user.name,
-                    phone: user.phone || '9999999999',
-                    email: user.email,
-                    addressLine1: '123 Test Street, Developer Colony',
-                    city: cities[Math.floor(Math.random() * cities.length)],
-                    state: 'Maharashtra',
-                    pincode: '400001',
-                    country: 'India'
+                    name: user.name, phone: user.phone || '9999999999', email: user.email,
+                    addressLine1: '123 Test Street', city: cities[Math.floor(Math.random() * cities.length)],
+                    state: 'Maharashtra', pincode: '400001', country: 'India'
                 },
-                shopId: shopId,
-                vendorId: `V-${uniqueSuffix}`,
-                orderType: 'KS4',
-                rapidOrderType: Math.random() > 0.5 ? 'Instant' : 'Standard',
-                expectedHandover: new Date(Date.now() + 86400000 * (Math.floor(Math.random() * 3) + 1)) // 1-3 days later
+                shopId, orderType: 'KS4',
+                expectedHandover: new Date(Date.now() + 86400000 * (Math.floor(Math.random() * 3) + 1))
             });
         }
 
         await Order.insertMany(orders);
-
-        res.status(201).json({
-            success: true,
-            message: '5 Test Orders Created Successfully',
-            count: 5
-        });
-
+        res.status(201).json({ success: true, message: '5 Test Orders Created Successfully', count: 5 });
     } catch (error) {
-        console.error("Seed Error:", error);
+        console.error('Seed Error:', error);
         res.status(500).json({ success: false, message: error.message, error: error.toString() });
     }
 };
@@ -611,25 +500,16 @@ const createTestOrders = async (req, res) => {
 const cancelMyOrder = async (req, res) => {
     try {
         const order = await Order.findOne({ _id: req.params.id, userId: req.user._id });
-
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found or not authorized' });
         }
-
         if (order.status !== 'pending') {
             return res.status(400).json({ success: false, message: `Cannot cancel order with status: ${order.status}` });
         }
-
         order.status = 'cancelled';
         order.problemDescription = 'Cancelled by user';
-
         await order.save();
-
-        res.json({
-            success: true,
-            message: 'Order cancelled successfully',
-            order
-        });
+        res.json({ success: true, message: 'Order cancelled successfully', order });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -641,58 +521,43 @@ const cancelMyOrder = async (req, res) => {
 const bulkUpdateOrderStatus = async (req, res) => {
     try {
         const { orderIds, status, trackingUrl, expectedHandover } = req.body;
-
         if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
             return res.status(400).json({ success: false, message: 'Please provide an array of order IDs' });
         }
-
         if (!status) {
             return res.status(400).json({ success: false, message: 'Please provide a status' });
         }
-
         const updateData = { status };
         if (trackingUrl) updateData.trackingUrl = trackingUrl;
         if (expectedHandover) updateData.expectedHandover = expectedHandover;
-
-        const result = await Order.updateMany(
-            { _id: { $in: orderIds } },
-            { $set: updateData }
-        );
-
-        res.json({
-            success: true,
-            message: `${result.modifiedCount} orders updated successfully`,
-            count: result.modifiedCount
-        });
+        const result = await Order.updateMany({ _id: { $in: orderIds } }, { $set: updateData });
+        res.json({ success: true, message: `${result.modifiedCount} orders updated successfully`, count: result.modifiedCount });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
 // @desc    Get all prescription requests (Admin)
-// @route   GET /api/orders/prescription-requests
+// @route   GET /api/orders/prescription/requests
 // @access  Private (Admin)
 const getPrescriptionRequests = async (req, res) => {
     try {
-        // If Admin, show all. If Shop, show only their own.
-        let query = { status: 'pending' }; // Show all pending prescription requests
-        if (req.shop) {
-            query.shopId = req.shop._id;
-        }
+        // Both admin and shop can see pending requests
+        const query = { status: 'pending' };
+        if (req.shop) query.shopId = req.shop._id;
 
         const requests = await PrescriptionRequest.find(query)
             .populate('userId', 'firstName lastName phone email')
             .sort({ createdAt: -1 });
 
-        // Fix name display for "undefined undefined"
-        const formattedRequests = requests.map(req => {
-            const user = req.userId ? req.userId.toObject() : null;
+        const formattedRequests = requests.map(r => {
+            const user = r.userId ? r.userId.toObject() : null;
             if (user) {
                 user.name = (user.firstName || user.lastName)
                     ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
                     : user.phone;
             }
-            return { ...req.toObject(), userId: user };
+            return { ...r.toObject(), userId: user };
         });
 
         res.json({ success: true, requests: formattedRequests });
@@ -702,7 +567,7 @@ const getPrescriptionRequests = async (req, res) => {
 };
 
 // @desc    Approve prescription request and create order
-// @route   PUT /api/orders/prescription-requests/:id/approve
+// @route   PUT /api/orders/prescription/requests/:id/approve
 // @access  Private (Admin)
 const approvePrescriptionRequest = async (req, res) => {
     try {
@@ -710,25 +575,27 @@ const approvePrescriptionRequest = async (req, res) => {
         if (!request) {
             return res.status(404).json({ success: false, message: 'Request not found' });
         }
-
         if (request.status !== 'pending') {
             return res.status(400).json({ success: false, message: `Request is already ${request.status}` });
         }
-        // Update the linked order
+
         let order = null;
+
+        // Legacy: if a pre-created order was linked (old behavior), just confirm it
         if (request.orderId) {
             order = await Order.findById(request.orderId);
             if (order) {
                 order.status = 'confirmed';
+                order.prescriptionPending = false;
                 await order.save();
             }
         }
 
-        // If for some reason the order wasn't found (legacy requests), create it now
+        // New flow: No pre-created order → create the order NOW on admin approval
         if (!order) {
             const orderNumber = `KS4-${Date.now()}`;
             order = await Order.create({
-                userId: request.userId,
+                userId: request.userId._id || request.userId,
                 orderNumber,
                 items: request.items,
                 subtotal: request.subtotal,
@@ -737,20 +604,32 @@ const approvePrescriptionRequest = async (req, res) => {
                 total: request.total,
                 shippingAddress: request.shippingAddress,
                 paymentMethod: request.paymentMethod,
-                status: 'confirmed', // Created as confirmed
+                status: 'confirmed',
                 orderType: 'KS4',
                 shopId: request.shopId,
-                prescriptionImage: request.prescriptionImage ? { url: request.prescriptionImage } : undefined
+                prescriptionPending: false,
+                prescriptionImage: request.prescriptionImage ? { url: request.prescriptionImage } : undefined,
+                expectedHandover: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
             });
         }
 
         request.status = 'approved';
         request.orderId = order._id;
-        request.adminActionBy = req.user ? req.user._id : null;
+        request.adminActionBy = req.admin ? req.admin._id : (req.user ? req.user._id : null);
         await request.save();
 
+        // --- Notify User ---
+        try {
+            const Notification = require('../models/Notification');
+            await Notification.create({
+                type: 'success',
+                title: 'Prescription Approved!',
+                message: `Your prescription has been verified. Order #${order.orderNumber} has been confirmed and is now being processed.`,
+                userId: request.userId._id || request.userId
+            });
+        } catch (err) { console.error('Notification Error:', err); }
+
         // --- Permanent Verification ---
-        // Create a verified prescription entry so the user is never blocked again
         await Prescription.findOneAndUpdate(
             { phone: request.userId.phone },
             {
@@ -758,18 +637,10 @@ const approvePrescriptionRequest = async (req, res) => {
                 age: 0,
                 phone: request.userId.phone,
                 status: 'Verified',
-                image: request.prescriptionImage || 'https://res.cloudinary.com/drwss54l2/image/upload/v1773429820/inventory_panel_profiles/mnrirlvh2byyvowecmqa.png', // Fallback to a default if empty
-                shop: request.shopId || (req.user ? req.user._id : order._id) // Fallback
+                image: request.prescriptionImage || 'https://res.cloudinary.com/drwss54l2/image/upload/v1773429820/inventory_panel_profiles/mnrirlvh2byyvowecmqa.png',
+                shop: request.shopId || order._id
             },
             { upsert: true }
-        );
-
-        // --- Cleanup Duplicates ---
-        // Mark all other SAME user's pending requests as approved (since we've now verified them)
-        const targetUserId = request.userId._id || request.userId;
-        await PrescriptionRequest.updateMany(
-            { userId: targetUserId, status: 'pending' },
-            { $set: { status: 'approved', orderId: order._id } }
         );
 
         res.json({
@@ -782,6 +653,47 @@ const approvePrescriptionRequest = async (req, res) => {
     }
 };
 
+// @desc    Reject prescription request
+// @route   PUT /api/orders/prescription/requests/:id/reject
+// @access  Private (Admin)
+const rejectPrescriptionRequest = async (req, res) => {
+    try {
+        const { rejectionReason } = req.body;
+        const request = await PrescriptionRequest.findById(req.params.id).populate('userId');
+        if (!request) {
+            return res.status(404).json({ success: false, message: 'Request not found' });
+        }
+        if (request.status !== 'pending') {
+            return res.status(400).json({ success: false, message: `Request is already ${request.status}` });
+        }
+
+        request.status = 'rejected';
+        request.rejectionReason = rejectionReason || 'Rejected by admin';
+        request.adminActionBy = req.admin ? req.admin._id : (req.user ? req.user._id : null);
+        await request.save();
+
+        // Notify user
+        try {
+            const Notification = require('../models/Notification');
+            await Notification.create({
+                type: 'error',
+                title: 'Prescription Request Rejected',
+                message: rejectionReason
+                    ? `Your prescription request was rejected. Reason: ${rejectionReason}`
+                    : 'Your prescription request was rejected by our team. Please contact support.',
+                userId: request.userId._id || request.userId
+            });
+        } catch (err) { console.error('Notification Error:', err); }
+
+        res.json({ success: true, message: 'Prescription request rejected successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Upload prescription by admin/doctor for a pending request
+// @route   PUT /api/orders/prescription/requests/:id/upload
+// @access  Private (Admin)
 const uploadAdminPrescription = async (req, res) => {
     try {
         let prescriptionImage = req.body.prescriptionImage;
@@ -803,29 +715,30 @@ const uploadAdminPrescription = async (req, res) => {
         if (!request) {
             return res.status(404).json({ success: false, message: 'Request not found' });
         }
-
         if (request.status !== 'pending') {
             return res.status(400).json({ success: false, message: `Request is already ${request.status}` });
         }
 
         // 1. Update the image in the request
         request.prescriptionImage = prescriptionImage;
-        // 2. Update the linked order
+
+        // 2. Check for legacy linked order
         let order = null;
         if (request.orderId) {
             order = await Order.findById(request.orderId);
             if (order) {
                 order.status = 'confirmed';
+                order.prescriptionPending = false;
                 order.prescriptionImage = { url: prescriptionImage };
                 await order.save();
             }
         }
 
-        // Create if missing (legacy)
+        // New flow: If no linked order, create it now
         if (!order) {
             const orderNumber = `KS4-${Date.now()}`;
             order = await Order.create({
-                userId: request.userId,
+                userId: request.userId._id || request.userId,
                 orderNumber,
                 items: request.items,
                 subtotal: request.subtotal,
@@ -837,16 +750,18 @@ const uploadAdminPrescription = async (req, res) => {
                 status: 'confirmed',
                 orderType: 'KS4',
                 shopId: request.shopId,
-                prescriptionImage: { url: prescriptionImage }
+                prescriptionPending: false,
+                prescriptionImage: { url: prescriptionImage },
+                expectedHandover: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
             });
         }
 
         request.status = 'approved';
         request.orderId = order._id;
-        request.adminActionBy = req.user ? req.user._id : null;
+        request.adminActionBy = req.admin ? req.admin._id : (req.user ? req.user._id : null);
         await request.save();
 
-        // 3. Update permanent verification for the user
+        // 3. Permanent verification for user
         await Prescription.findOneAndUpdate(
             { phone: request.userId.phone },
             {
@@ -855,7 +770,7 @@ const uploadAdminPrescription = async (req, res) => {
                 phone: request.userId.phone,
                 status: 'Verified',
                 image: prescriptionImage,
-                shop: request.shopId || (req.user ? req.user._id : order._id)
+                shop: request.shopId || order._id
             },
             { upsert: true }
         );
@@ -871,16 +786,12 @@ const uploadAdminPrescription = async (req, res) => {
     }
 };
 
-
 // @desc    Request prescription from admin/doctor (User does NOT have prescription)
 // @route   POST /api/orders/request-prescription
 // @access  Private (User Token)
 const requestPrescription = async (req, res) => {
     try {
-        let {
-            items, shippingAddress, paymentMethod = 'COD',
-            offerCode, notes
-        } = req.body;
+        let { items, shippingAddress, paymentMethod = 'COD', offerCode, notes } = req.body;
 
         if (typeof items === 'string') items = JSON.parse(items);
         if (typeof shippingAddress === 'string') shippingAddress = JSON.parse(shippingAddress);
@@ -912,12 +823,7 @@ const requestPrescription = async (req, res) => {
             if (!firstShopId) firstShopId = product.shopId;
             const price = product.sellingPrice;
             subtotal += price * item.quantity;
-            orderItems.push({
-                product: product._id,
-                productName: product.name,
-                productPrice: price,
-                quantity: item.quantity
-            });
+            orderItems.push({ product: product._id, productName: product.name, productPrice: price, quantity: item.quantity });
             if (product.isPrescriptionRequired === true || product.isPrescriptionRequired === 'true') {
                 productsRequiringPrescription.push(product.name);
             }
@@ -1029,5 +935,6 @@ module.exports = {
     createTestOrders,
     getPrescriptionRequests,
     approvePrescriptionRequest,
-    uploadAdminPrescription
+    uploadAdminPrescription,
+    rejectPrescriptionRequest
 };
