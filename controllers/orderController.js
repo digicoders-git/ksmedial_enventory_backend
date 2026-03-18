@@ -235,8 +235,8 @@ const placeOrder = async (req, res) => {
         }
 
         // --- Prescription Required Flow ---
-        // Goes to PrescriptionRequest if: product needs Rx, OR user uploaded a file, OR explicitly requested
-        if (prescriptionRequired || userSentFile || prescriptionImageUrl || explicitlyRequested) {
+        // Goes to PrescriptionRequest ONLY if: product explicitly needs Rx, OR user actually uploaded a file
+        if (prescriptionRequired || userSentFile) {
             const request = await PrescriptionRequest.create({
                 userId: req.user._id,
                 items: orderItems,
@@ -271,16 +271,6 @@ const placeOrder = async (req, res) => {
                     : 'Your order requires a prescription verification. Once verified/provided by our admin, your order will be confirmed.',
                 requestId: request._id,
                 hasPrescription: !!(prescriptionImageUrl || userSentFile)
-            });
-        }
-
-        // --- FINAL SAFETY GATE ---
-        if (prescriptionRequired || userSentFile || prescriptionImageUrl || explicitlyRequested) {
-            return res.status(201).json({
-                success: true,
-                isPrescriptionRequest: true,
-                message: 'Processing as prescription request...',
-                requestId: 'RETRY-SAFETY'
             });
         }
 
