@@ -235,8 +235,18 @@ const placeOrder = async (req, res) => {
         }
 
         // --- Prescription Required Flow ---
-        // Goes to PrescriptionRequest ONLY if: product explicitly needs Rx, OR user actually uploaded a file
-        if (prescriptionRequired || userSentFile) {
+        // If product needs Rx but user did NOT upload a file → block the order
+        if (prescriptionRequired && !userSentFile) {
+            return res.status(400).json({
+                success: false,
+                requiresPrescription: true,
+                message: 'This order contains prescription-required products. Please upload your prescription to proceed.',
+                productsRequiringPrescription
+            });
+        }
+
+        // Goes to PrescriptionRequest ONLY if user actually uploaded a file
+        if (userSentFile) {
             const request = await PrescriptionRequest.create({
                 userId: req.user._id,
                 items: orderItems,
