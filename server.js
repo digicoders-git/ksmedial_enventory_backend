@@ -98,6 +98,7 @@ app.use('/api/physical-receiving', require('./routes/physicalReceivingRoutes'));
 app.use('/api/packing-materials', require('./routes/packingMaterialRoutes'));
 app.use('/api/locations', require('./routes/locationRoutes'));
 app.use('/api/purchase-orders', require('./routes/purchaseOrderRoutes'));
+app.use('/api/batches', require('./routes/batchRoutes'));
 app.use('/api/cart', require('./routes/cartRoutes'));
 app.use('/api/wishlist', require('./routes/wishlistRoutes'));
 app.use('/api/payment', require('./routes/paymentRoutes'));

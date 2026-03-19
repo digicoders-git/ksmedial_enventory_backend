@@ -9,6 +9,8 @@ const orderItemSchema = new mongoose.Schema(
     size: { type: String },
     color: { type: String },
     addOnName: { type: String },
+    batchId: { type: mongoose.Schema.Types.ObjectId, ref: "Batch" },
+    batchNumber: { type: String },
   },
   { _id: false }
 );

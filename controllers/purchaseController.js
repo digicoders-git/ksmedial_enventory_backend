@@ -2,6 +2,8 @@ const Purchase = require('../models/Purchase');
 const Product = require('../models/Product');
 const Supplier = require('../models/Supplier');
 const PhysicalReceiving = require('../models/PhysicalReceiving');
+const Batch = require('../models/Batch');
+const InventoryLog = require('../models/InventoryLog');
 
 // Helper to extract pack size (e.g. "1x10" -> 10)
 const getPackSize = (packingStr) => {
@@ -186,15 +188,6 @@ const createPurchase = async (req, res) => {
                      if (sPrice) product.sellingPrice = sPrice;
                      
                      if (item.mrp) product.mrp = item.mrp;
-                     
-                     // Sync Batch, Expiry, Mfg Date, HSN, Tax from GRN
-                     if (item.batchNumber) product.batchNumber = item.batchNumber;
-                     if (item.expiryDate && !isNaN(new Date(item.expiryDate).getTime())) {
-                         product.expiryDate = new Date(item.expiryDate).toISOString().split('T')[0];
-                     }
-                     if (item.mfgDate && !isNaN(new Date(item.mfgDate).getTime())) {
-                         product.manufacturingDate = new Date(item.mfgDate).toISOString().split('T')[0];
-                     }
                      if (item.hsnCode) product.hsnCode = item.hsnCode;
                      if (item.pack) product.packing = item.pack;
                      
@@ -203,6 +196,49 @@ const createPurchase = async (req, res) => {
                      
                      product.isInventoryLive = true;
                      await product.save();
+
+                     // Create or update Batch record
+                     if (item.batchNumber) {
+                         const existingBatch = await Batch.findOne({
+                             productId: product._id,
+                             batchNumber: item.batchNumber,
+                             shopId: req.shop._id
+                         });
+                         if (existingBatch) {
+                             existingBatch.quantity += totalQtyInUnits;
+                             existingBatch.status = 'Active';
+                             if (item.expiryDate && !isNaN(new Date(item.expiryDate).getTime())) existingBatch.expiryDate = new Date(item.expiryDate);
+                             if (item.mfgDate && !isNaN(new Date(item.mfgDate).getTime())) existingBatch.manufacturingDate = new Date(item.mfgDate);
+                             if (item.mrp) existingBatch.mrp = item.mrp;
+                             if (pPrice) existingBatch.purchasePrice = pPrice;
+                             if (sPrice) existingBatch.sellingPrice = sPrice;
+                             await existingBatch.save();
+                         } else {
+                             await Batch.create({
+                                 productId: product._id,
+                                 batchNumber: item.batchNumber,
+                                 expiryDate: item.expiryDate && !isNaN(new Date(item.expiryDate).getTime()) ? new Date(item.expiryDate) : undefined,
+                                 manufacturingDate: item.mfgDate && !isNaN(new Date(item.mfgDate).getTime()) ? new Date(item.mfgDate) : undefined,
+                                 quantity: totalQtyInUnits,
+                                 purchasePrice: pPrice || 0,
+                                 sellingPrice: sPrice || 0,
+                                 mrp: item.mrp || 0,
+                                 grnId: createdPurchase._id,
+                                 shopId: req.shop._id,
+                                 status: 'Active'
+                             });
+                         }
+                         await InventoryLog.create({
+                             type: 'IN',
+                             reason: `GRN Received (${finalInvoiceNumber})`,
+                             quantity: totalQtyInUnits,
+                             productId: product._id,
+                             productName: product.name,
+                             batchNumber: item.batchNumber,
+                             shopId: req.shop._id,
+                             status: 'Completed'
+                         });
+                     }
                  }
             }
         }
@@ -404,25 +440,61 @@ const processPutAway = async (req, res) => {
                  if (sPrice) product.sellingPrice = sPrice;
                  
                  if (item.mrp) product.mrp = item.mrp;
-                 if (item.rack) product.rackLocation = item.rack; 
-                 
-                 // Sync Batch, Expiry, Mfg Date, HSN, Tax from PutAway
-                 if (item.batchNumber) product.batchNumber = item.batchNumber;
-                 if (item.expiryDate && !isNaN(new Date(item.expiryDate).getTime())) {
-                     product.expiryDate = new Date(item.expiryDate).toISOString().split('T')[0];
-                 }
-                 if (item.mfgDate && !isNaN(new Date(item.mfgDate).getTime())) {
-                     product.manufacturingDate = new Date(item.mfgDate).toISOString().split('T')[0];
-                 }
+                 if (item.rack) product.rackLocation = item.rack;
                  if (item.hsnCode) product.hsnCode = item.hsnCode;
                  if (item.pack) product.packing = item.pack;
 
-                  const totalTax = (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0);
-                  if (totalTax > 0) product.tax = totalTax;
-                  
-                  product.isInventoryLive = true;
-                  await product.save();
-              }
+                 const totalTax = (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0);
+                 if (totalTax > 0) product.tax = totalTax;
+                 
+                 product.isInventoryLive = true;
+                 await product.save();
+
+                 // Create or update Batch record
+                 if (item.batchNumber) {
+                     const existingBatch = await Batch.findOne({
+                         productId: product._id,
+                         batchNumber: item.batchNumber,
+                         shopId: purchase.shopId
+                     });
+                     if (existingBatch) {
+                         existingBatch.quantity += totalQtyInUnits;
+                         existingBatch.status = 'Active';
+                         if (item.expiryDate && !isNaN(new Date(item.expiryDate).getTime())) existingBatch.expiryDate = new Date(item.expiryDate);
+                         if (item.mfgDate && !isNaN(new Date(item.mfgDate).getTime())) existingBatch.manufacturingDate = new Date(item.mfgDate);
+                         if (item.mrp) existingBatch.mrp = item.mrp;
+                         if (pPrice) existingBatch.purchasePrice = pPrice;
+                         if (sPrice) existingBatch.sellingPrice = sPrice;
+                         if (item.rack) existingBatch.rackLocation = item.rack;
+                         await existingBatch.save();
+                     } else {
+                         await Batch.create({
+                             productId: product._id,
+                             batchNumber: item.batchNumber,
+                             expiryDate: item.expiryDate && !isNaN(new Date(item.expiryDate).getTime()) ? new Date(item.expiryDate) : undefined,
+                             manufacturingDate: item.mfgDate && !isNaN(new Date(item.mfgDate).getTime()) ? new Date(item.mfgDate) : undefined,
+                             quantity: totalQtyInUnits,
+                             purchasePrice: pPrice || 0,
+                             sellingPrice: sPrice || 0,
+                             mrp: item.mrp || 0,
+                             rackLocation: item.rack || '',
+                             grnId: purchase._id,
+                             shopId: purchase.shopId,
+                             status: 'Active'
+                         });
+                     }
+                     await InventoryLog.create({
+                         type: 'IN',
+                         reason: `Put Away (${purchase.invoiceNumber})`,
+                         quantity: totalQtyInUnits,
+                         productId: product._id,
+                         productName: product.name,
+                         batchNumber: item.batchNumber,
+                         shopId: purchase.shopId,
+                         status: 'Completed'
+                     });
+                 }
+             }
          }
 
         purchase.status = 'Received';

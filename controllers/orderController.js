@@ -938,3 +938,112 @@ module.exports = {
     uploadAdminPrescription,
     rejectPrescriptionRequest
 };
+
+
+// @desc    Assign batches to order items
+// @route   PUT /api/orders/:id/assign-batches
+// @access  Private (Admin/Shop)
+const assignBatchesToOrder = async (req, res) => {
+    try {
+        const { batchAssignments } = req.body; // Array of { itemIndex, batchId, quantity }
+        
+        const order = await Order.findById(req.params.id).populate('items.product');
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+
+        const Batch = require('../models/Batch');
+        const InventoryLog = require('../models/InventoryLog');
+
+        // Validate and assign batches
+        for (const assignment of batchAssignments) {
+            const { itemIndex, batchId, quantity } = assignment;
+            
+            if (itemIndex >= order.items.length) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: `Invalid item index: ${itemIndex}` 
+                });
+            }
+
+            const batch = await Batch.findById(batchId);
+            if (!batch) {
+                return res.status(404).json({ 
+                    success: false, 
+                    message: `Batch not found: ${batchId}` 
+                });
+            }
+
+            if (batch.quantity < quantity) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: `Insufficient quantity in batch ${batch.batchNumber}. Available: ${batch.quantity}, Required: ${quantity}` 
+                });
+            }
+
+            // Assign batch to order item
+            order.items[itemIndex].batchId = batch._id;
+            order.items[itemIndex].batchNumber = batch.batchNumber;
+
+            // Deduct from batch
+            batch.quantity -= quantity;
+            if (batch.quantity === 0) {
+                batch.status = 'Depleted';
+            }
+            await batch.save();
+
+            // Create inventory log
+            await InventoryLog.create({
+                type: 'OUT',
+                reason: `Order ${order.orderNumber}`,
+                quantity: quantity,
+                productId: order.items[itemIndex].product._id || order.items[itemIndex].product,
+                productName: order.items[itemIndex].productName,
+                batchNumber: batch.batchNumber,
+                shopId: order.shopId || batch.shopId,
+                adjustedByName: req.admin?.username || req.shop?.shopName || 'System',
+                status: 'Completed'
+            });
+
+            // Update product stock
+            const Product = require('../models/Product');
+            await Product.findByIdAndUpdate(
+                order.items[itemIndex].product._id || order.items[itemIndex].product,
+                { $inc: { quantity: -quantity, stock: -quantity } }
+            );
+        }
+
+        await order.save();
+
+        res.json({
+            success: true,
+            message: 'Batches assigned successfully and inventory updated',
+            order
+        });
+    } catch (error) {
+        console.error('Assign Batches Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+module.exports = {
+    // User facing
+    getMyOrders,
+    getMyOrderById,
+    trackOrder,
+    placeOrder,
+    cancelMyOrder,
+    requestPrescription,
+    getMyPrescriptionRequests,
+    // Admin / Shop facing
+    getOrders,
+    getOrderById,
+    updateOrderStatus,
+    bulkUpdateOrderStatus,
+    createTestOrders,
+    getPrescriptionRequests,
+    approvePrescriptionRequest,
+    uploadAdminPrescription,
+    rejectPrescriptionRequest,
+    assignBatchesToOrder
+};

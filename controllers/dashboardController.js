@@ -297,13 +297,20 @@ const getDashboardStats = async (req, res) => {
         // Existing simple workflow for backward compatibility if needed
         const orderWorkflow = {
             total: allOrders.length,
-            picking: queueStats.picking.total,
-            onHold: queueStats.onHold.total,
-            billing: queueStats.billing.total,
-            packing: queueStats.packing.total,
-            shipping: queueStats.shipping.total,
-            problemQueue: queueStats.problem.total,
+            pending: allOrders.filter(o => o.status === 'pending').length,
+            confirmed: allOrders.filter(o => o.status === 'confirmed').length,
+            unallocated: allOrders.filter(o => o.status === 'Unallocated').length,
+            picking: allOrders.filter(o => o.status === 'Picking').length,
+            picklistGenerated: allOrders.filter(o => o.status === 'Picklist Generated').length,
+            qualityCheck: allOrders.filter(o => o.status === 'Quality Check').length,
+            billing: allOrders.filter(o => o.status === 'Billing').length,
+            packing: allOrders.filter(o => o.status === 'Packing').length,
+            scannedForShipping: allOrders.filter(o => o.status === 'Scanned For Shipping').length,
+            shipping: allOrders.filter(o => o.status === 'shipped').length,
             delivered: allOrders.filter(o => o.status === 'delivered').length,
+            onHold: allOrders.filter(o => o.status === 'On Hold').length,
+            problemQueue: allOrders.filter(o => o.status === 'Problem Queue').length,
+            cancelled: allOrders.filter(o => o.status === 'cancelled').length,
             dailyOrders: allOrders.filter(o => new Date(o.createdAt).toDateString() === todayStr).length,
             last7DaysTrend: [] // Will calc below
         };

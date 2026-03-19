@@ -16,7 +16,8 @@ const {
     uploadAdminPrescription,
     requestPrescription,
     getMyPrescriptionRequests,
-    rejectPrescriptionRequest
+    rejectPrescriptionRequest,
+    assignBatchesToOrder
 } = require('../controllers/orderController');
 const { protect, protectUser, protectAdminOrShop } = require('../middleware/authMiddleware');
 const { upload } = require('../middleware/uploadMiddleware');
@@ -48,6 +49,7 @@ router.put('/prescription/requests/:id/reject', protectAdminOrShop, rejectPrescr
 router.put('/prescription/requests/:id/upload', protectAdminOrShop, upload.single('prescriptionImage'), uploadAdminPrescription);
 
 router.get('/:id', protectAdminOrShop, getOrderById);
+router.put('/:id/assign-batches', protectAdminOrShop, assignBatchesToOrder);
 router.put('/:id/status', protectAdminOrShop, upload.single('dispatchProof'), updateOrderStatus);
 
 module.exports = router;
