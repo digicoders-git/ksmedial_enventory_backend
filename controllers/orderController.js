@@ -337,7 +337,7 @@ const getOrders = async (req, res) => {
         const orders = await Order.find({ prescriptionPending: { $ne: true } })
             .sort({ createdAt: -1 })
             .populate('userId', 'firstName lastName email phone')
-            .populate('items.product', 'name sku');
+            .populate('items.product', 'name sku quantity batchNumber expiryDate rackLocation');
 
         const formattedOrders = orders.map(order => {
             const orderObj = order.toObject();
@@ -960,57 +960,72 @@ const assignBatchesToOrder = async (req, res) => {
             const { itemIndex, batchId, quantity } = assignment;
             
             if (itemIndex >= order.items.length) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: `Invalid item index: ${itemIndex}` 
+                return res.status(400).json({ success: false, message: `Invalid item index: ${itemIndex}` });
+            }
+
+            const item = order.items[itemIndex];
+            const productId = item.product?._id || item.product;
+
+            if (batchId && batchId !== 'PRODUCT_LEVEL') {
+                const batch = await Batch.findById(batchId);
+                if (!batch) {
+                    return res.status(404).json({ success: false, message: `Batch not found: ${batchId}` });
+                }
+
+                if (batch.quantity < quantity) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: `Insufficient quantity in batch ${batch.batchNumber}. Available: ${batch.quantity}, Required: ${quantity}` 
+                    });
+                }
+
+                order.items[itemIndex].batchId = batch._id;
+                order.items[itemIndex].batchNumber = batch.batchNumber;
+
+                batch.quantity -= quantity;
+                if (batch.quantity === 0) batch.status = 'Depleted';
+                await batch.save();
+
+                await InventoryLog.create({
+                    type: 'OUT',
+                    reason: `Order ${order.orderNumber}`,
+                    quantity: quantity,
+                    productId,
+                    productName: item.productName,
+                    batchNumber: batch.batchNumber,
+                    shopId: order.shopId || batch.shopId,
+                    adjustedByName: req.admin?.username || req.shop?.shopName || 'System',
+                    status: 'Completed'
+                });
+            } else {
+                // Pick from Product-level stock
+                const product = await Product.findById(productId);
+                if (!product || (product.quantity || 0) < quantity) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: `Insufficient direct stock for ${item.productName}. Available: ${product?.quantity || 0}` 
+                    });
+                }
+
+                order.items[itemIndex].batchNumber = product.batchNumber || 'N/A';
+                
+                await InventoryLog.create({
+                    type: 'OUT',
+                    reason: `Order ${order.orderNumber} (Unbatched)`,
+                    quantity: quantity,
+                    productId,
+                    productName: item.productName,
+                    batchNumber: product.batchNumber || 'N/A',
+                    shopId: order.shopId || product.shopId,
+                    adjustedByName: req.admin?.username || req.shop?.shopName || 'System',
+                    status: 'Completed'
                 });
             }
 
-            const batch = await Batch.findById(batchId);
-            if (!batch) {
-                return res.status(404).json({ 
-                    success: false, 
-                    message: `Batch not found: ${batchId}` 
-                });
-            }
-
-            if (batch.quantity < quantity) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: `Insufficient quantity in batch ${batch.batchNumber}. Available: ${batch.quantity}, Required: ${quantity}` 
-                });
-            }
-
-            // Assign batch to order item
-            order.items[itemIndex].batchId = batch._id;
-            order.items[itemIndex].batchNumber = batch.batchNumber;
-
-            // Deduct from batch
-            batch.quantity -= quantity;
-            if (batch.quantity === 0) {
-                batch.status = 'Depleted';
-            }
-            await batch.save();
-
-            // Create inventory log
-            await InventoryLog.create({
-                type: 'OUT',
-                reason: `Order ${order.orderNumber}`,
-                quantity: quantity,
-                productId: order.items[itemIndex].product._id || order.items[itemIndex].product,
-                productName: order.items[itemIndex].productName,
-                batchNumber: batch.batchNumber,
-                shopId: order.shopId || batch.shopId,
-                adjustedByName: req.admin?.username || req.shop?.shopName || 'System',
-                status: 'Completed'
+            // Deduct total product stock (this works for both batch and direct)
+            await Product.findByIdAndUpdate(productId, {
+                $inc: { quantity: -quantity, stock: -quantity }
             });
-
-            // Update product stock
-            const Product = require('../models/Product');
-            await Product.findByIdAndUpdate(
-                order.items[itemIndex].product._id || order.items[itemIndex].product,
-                { $inc: { quantity: -quantity, stock: -quantity } }
-            );
         }
 
         await order.save();
