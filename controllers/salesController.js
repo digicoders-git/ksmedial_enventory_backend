@@ -1,6 +1,7 @@
 const Sale = require('../models/Sale');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
+const Batch = require('../models/Batch');
 
 const mongoose = require('mongoose');
 
@@ -121,6 +122,29 @@ const createSale = async (req, res) => {
 
             product.quantity = product.quantity - deductQty;
             await product.save();
+
+            // Batch quantity bhi deduct karo (FEFO - pehle expire hone wala pehle)
+            if (item.batchId) {
+                // Agar specific batch select ki hai
+                const batch = await Batch.findById(item.batchId);
+                if (batch) {
+                    batch.quantity = Math.max(0, batch.quantity - deductQty);
+                    if (batch.quantity === 0) batch.status = 'Depleted';
+                    await batch.save();
+                }
+            } else {
+                // FEFO: sabse pehle expire hone wali batch se deduct karo
+                let remaining = deductQty;
+                const batches = await Batch.find({ productId: item.productId, status: 'Active' }).sort({ expiryDate: 1 });
+                for (const batch of batches) {
+                    if (remaining <= 0) break;
+                    const deductFromBatch = Math.min(batch.quantity, remaining);
+                    batch.quantity -= deductFromBatch;
+                    if (batch.quantity === 0) batch.status = 'Depleted';
+                    await batch.save();
+                    remaining -= deductFromBatch;
+                }
+            }
         }
 
         res.status(201).json({ success: true, sale: createdSale });

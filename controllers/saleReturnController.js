@@ -1,6 +1,7 @@
 const SaleReturn = require('../models/SaleReturn');
 const Sale = require('../models/Sale');
 const Product = require('../models/Product');
+const Batch = require('../models/Batch');
 
 const getPackSize = (packingStr) => {
     if (!packingStr) return 1;
@@ -109,24 +110,32 @@ const completePutAway = async (req, res) => {
             const product = await Product.findById(item.productId);
             if (product) {
                 const packSize = getPackSize(product.packing);
-                const returnQtyInUnits = item.quantity * packSize; // item.quantity is Strips
+                const returnQtyInUnits = item.quantity * packSize;
                 
                 product.quantity = (product.quantity || 0) + returnQtyInUnits;
 
                 // Update Rack Location if provided
                 if (putAwayItems && putAwayItems.length > 0) {
-                    // Try to match by _id or productId
                     const matchedItem = putAwayItems.find(p => 
                         (p._id && p._id.toString() === item._id.toString()) || 
                         (p.productId && p.productId.toString() === item.productId.toString())
                     );
-                    
                     if (matchedItem && matchedItem.rack) {
                         product.rackLocation = matchedItem.rack;
                     }
                 }
 
                 await product.save();
+
+                // Batch quantity bhi restore karo
+                if (item.batchId) {
+                    const batch = await Batch.findById(item.batchId);
+                    if (batch) {
+                        batch.quantity += returnQtyInUnits;
+                        batch.status = 'Active';
+                        await batch.save();
+                    }
+                }
             }
         }
 
