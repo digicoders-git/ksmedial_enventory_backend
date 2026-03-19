@@ -85,7 +85,8 @@ const orderSchema = new mongoose.Schema(
     problemDescription: { type: String },
     trackingId: { type: String }, // Added
     trackingUrl: { type: String }, // Added
-    dispatchProof: { type: String } // Added for scan confirmation
+    dispatchProof: { type: String }, // Added for scan confirmation
+    pickerName: { type: String } // Added for Picking Workflow
   },
   { timestamps: true }
 );

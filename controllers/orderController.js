@@ -399,6 +399,7 @@ const updateOrderStatus = async (req, res) => {
         if (trackingUrl !== undefined) order.trackingUrl = trackingUrl;
         if (expectedHandover !== undefined) order.expectedHandover = expectedHandover;
         if (paymentStatus !== undefined) order.paymentStatus = paymentStatus;
+        if (req.body.pickerName !== undefined) order.pickerName = req.body.pickerName;
 
         if (req.file) {
             try {

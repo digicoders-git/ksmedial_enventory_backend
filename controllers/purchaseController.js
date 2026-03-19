@@ -346,10 +346,19 @@ const getPurchaseById = async (req, res) => {
 
         const purchase = await Purchase.findOne(query)
             .populate('supplierId', 'name email phone gstNumber address')
-            .populate('items.productId', 'name sku');
+            .populate('items.productId', 'name sku')
+            .populate('physicalReceivingId');
 
         if (purchase) {
-            res.json({ success: true, purchase });
+            let responsePurchase = purchase.toObject();
+            if (!responsePurchase.physicalReceivingId || !responsePurchase.physicalReceivingId.validatedBy) {
+                const PhysicalReceiving = require('../models/PhysicalReceiving');
+                const linkedPR = await PhysicalReceiving.findOne({ grnId: purchase._id });
+                if (linkedPR) {
+                    responsePurchase.physicalReceivingId = linkedPR;
+                }
+            }
+            res.json({ success: true, purchase: responsePurchase });
         } else {
             res.status(404).json({ success: false, message: 'Purchase not found' });
         }
