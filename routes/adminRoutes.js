@@ -78,7 +78,7 @@ router.get('/products/sample', downloadSampleCSV);
 router.get('/shops', getShops);
 router.post('/shops', createShop);
 router.put('/shops/:id', updateShop);
-router.delete('/shops/:id', deleteShop);
+router.delete('/shops/:id', protectAdmin, deleteShop);
 
 // Categories
 router.get('/categories', getAllCategories);

@@ -448,10 +448,14 @@ const updateShop = async (req, res) => {
 
 const deleteShop = async (req, res) => {
     try {
+        const shop = await Shop.findById(req.params.id);
+        if (!shop) {
+            return res.status(404).json({ success: false, message: 'Shop not found' });
+        }
         await Shop.findByIdAndDelete(req.params.id);
-        res.json({ status: 'success', message: 'Shop deleted successfully' });
+        res.json({ success: true, message: 'Shop deleted successfully' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
