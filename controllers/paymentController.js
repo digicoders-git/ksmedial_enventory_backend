@@ -19,20 +19,36 @@ const getRazorpayKey = (req, res) => {
 
 // @desc    Create a Razorpay Order
 // @route   POST /api/payment/create-order
-// @access  Public (User Token optional)
+// @access  Public (but userId required)
 const createOrder = async (req, res) => {
     try {
-        const { amount, currency = 'INR', receipt, notes } = req.body;
+        const { amount, currency = 'INR', receipt, notes, userId, orderId } = req.body;
 
         if (!amount) {
             return res.status(400).json({ success: false, message: 'Amount is required' });
+        }
+
+        // Validate userId - either from token or body
+        let finalUserId = userId;
+        if (req.user) {
+            finalUserId = req.user._id; // From token if logged in
+        } else if (!userId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'userId is required for payment tracking. Please login or provide userId in request body.' 
+            });
         }
 
         const options = {
             amount: Math.round(amount * 100), // Razorpay expects amount in paise
             currency,
             receipt: receipt || `receipt_${Date.now()}`,
-            notes: notes || {}
+            notes: {
+                ...notes,
+                userId: finalUserId.toString(),
+                orderId: orderId || 'N/A',
+                createdAt: new Date().toISOString()
+            }
         };
 
         const order = await razorpay.orders.create(options);
@@ -44,7 +60,8 @@ const createOrder = async (req, res) => {
                 amount: order.amount,
                 currency: order.currency,
                 receipt: order.receipt,
-                status: order.status
+                status: order.status,
+                notes: order.notes
             },
             key: process.env.RAZORPAY_KEY_ID
         });
@@ -56,15 +73,26 @@ const createOrder = async (req, res) => {
 
 // @desc    Verify Razorpay Payment Signature
 // @route   POST /api/payment/verify
-// @access  Public
-const verifyPayment = (req, res) => {
+// @access  Public (but userId required for tracking)
+const verifyPayment = async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, userId, orderId } = req.body;
 
         if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
             return res.status(400).json({
                 success: false,
                 message: 'razorpay_order_id, razorpay_payment_id, and razorpay_signature are required'
+            });
+        }
+
+        // Validate userId for tracking
+        let finalUserId = userId;
+        if (req.user) {
+            finalUserId = req.user._id;
+        } else if (!userId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'userId is required for payment tracking' 
             });
         }
 
@@ -78,11 +106,16 @@ const verifyPayment = (req, res) => {
         const isAuthentic = expectedSignature === razorpay_signature;
 
         if (isAuthentic) {
+            // TODO: Save payment record to database with userId and orderId
+            // Example: await Payment.create({ userId: finalUserId, orderId, razorpay_payment_id, razorpay_order_id, status: 'success' });
+            
             res.json({
                 success: true,
                 message: 'Payment verified successfully',
                 paymentId: razorpay_payment_id,
-                orderId: razorpay_order_id
+                orderId: razorpay_order_id,
+                userId: finalUserId,
+                verifiedAt: new Date().toISOString()
             });
         } else {
             res.status(400).json({
