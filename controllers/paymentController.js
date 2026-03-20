@@ -122,9 +122,54 @@ const getPaymentDetails = async (req, res) => {
     }
 };
 
+// @desc    Generate Test Payment Data (FOR TESTING ONLY)
+// @route   POST /api/payment/generate-test-data
+// @access  Public
+const generateTestData = (req, res) => {
+    try {
+        const { razorpay_order_id } = req.body;
+
+        if (!razorpay_order_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'razorpay_order_id is required. First call create-order API to get order_id'
+            });
+        }
+
+        // Generate mock payment ID
+        const razorpay_payment_id = `pay_TEST${Date.now()}`;
+
+        // Generate valid signature
+        const body = razorpay_order_id + '|' + razorpay_payment_id;
+        const razorpay_signature = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+            .update(body.toString())
+            .digest('hex');
+
+        res.json({
+            success: true,
+            message: 'Test data generated. Use this in verify API',
+            testData: {
+                razorpay_order_id,
+                razorpay_payment_id,
+                razorpay_signature
+            },
+            instructions: {
+                step1: 'Copy the testData object',
+                step2: 'Use it in POST /api/payment/verify endpoint',
+                step3: 'Verification should succeed with this data'
+            }
+        });
+    } catch (error) {
+        console.error('Generate Test Data Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getRazorpayKey,
     createOrder,
     verifyPayment,
-    getPaymentDetails
+    getPaymentDetails,
+    generateTestData
 };
