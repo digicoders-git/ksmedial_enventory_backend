@@ -101,7 +101,18 @@ const verifyPayment = (req, res) => {
 // @access  Public
 const getPaymentDetails = async (req, res) => {
     try {
-        const payment = await razorpay.payments.fetch(req.params.paymentId);
+        const paymentId = req.params.paymentId;
+        
+        // Check if it's a test payment ID
+        if (paymentId.startsWith('pay_TEST')) {
+            return res.status(400).json({
+                success: false,
+                message: 'This is a test payment ID. This endpoint only works with real Razorpay payment IDs from actual transactions.',
+                note: 'Test payment IDs are only for signature verification, not for fetching payment details.'
+            });
+        }
+        
+        const payment = await razorpay.payments.fetch(paymentId);
         res.json({
             success: true,
             payment: {
@@ -118,7 +129,11 @@ const getPaymentDetails = async (req, res) => {
         });
     } catch (error) {
         console.error('Razorpay Fetch Payment Error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({ 
+            success: false, 
+            message: error.message || 'Failed to fetch payment details',
+            hint: 'Make sure the payment ID is valid and exists in Razorpay dashboard'
+        });
     }
 };
 
