@@ -180,18 +180,32 @@ const createPurchase = async (req, res) => {
                      
                      product.quantity = (product.quantity || 0) + totalQtyInUnits;
                      
-                     // Update pricing and SKU details
-                     const pPrice = item.purchasePrice || item.baseRate;
-                     if (pPrice) product.purchasePrice = pPrice;
-                     
-                     const sPrice = item.sellingPrice || item.mrp;
-                     if (sPrice) product.sellingPrice = sPrice;
-                     
-                     if (item.mrp) product.mrp = item.mrp;
-                     if (item.hsnCode) product.hsnCode = item.hsnCode;
-                     if (item.pack) product.packing = item.pack;
-                     
-                     const totalTax = (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0);
+                      // Update pricing, location and SKU details
+                      if (item.purchasePrice !== undefined) product.purchasePrice = item.purchasePrice || item.baseRate || 0;
+                      if (item.sellingPrice !== undefined) product.sellingPrice = item.sellingPrice || item.mrp || 0;
+                      if (item.mrp !== undefined) product.mrp = item.mrp;
+                      if (item.hsnCode !== undefined) product.hsnCode = item.hsnCode;
+                      if (item.pack !== undefined) product.packing = item.pack;
+                      
+                      // Detailed GRN Field Sync
+                      product.supplierSkuId = item.supplierSkuId || product.sku || '';
+                      product.sku = item.skuId || product.sku || '';
+                      product.orderedQty = item.orderedQty ?? 0;
+                      product.receivedQty = item.receivedQty ?? 0;
+                      product.physicalFree = item.physicalFreeQty ?? item.physicalFree ?? 0;
+                      product.schemeFree = item.schemeFreeQty ?? item.schemeFree ?? 0;
+                      product.poRate = item.poRate ?? 0;
+                      product.ptr = item.ptr ?? 0;
+                      product.baseRate = item.baseRate ?? 0;
+                      product.schemeDisc = item.schemeDiscount ?? item.schemeDisc ?? 0;
+                      product.discountPercent = item.discountPercent ?? 0;
+                      product.amount = item.amount ?? 0;
+                      product.cgst = item.cgst ?? 0;
+                      product.sgst = item.sgst ?? 0;
+                      product.igst = item.igst ?? 0;
+                      product.margin = item.margin ?? 0;
+
+                  const totalTax = (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0);
                      if (totalTax > 0) product.tax = totalTax;
                      
                      product.isInventoryLive = true;
@@ -210,8 +224,8 @@ const createPurchase = async (req, res) => {
                              if (item.expiryDate && !isNaN(new Date(item.expiryDate).getTime())) existingBatch.expiryDate = new Date(item.expiryDate);
                              if (item.mfgDate && !isNaN(new Date(item.mfgDate).getTime())) existingBatch.manufacturingDate = new Date(item.mfgDate);
                              if (item.mrp) existingBatch.mrp = item.mrp;
-                             if (pPrice) existingBatch.purchasePrice = pPrice;
-                             if (sPrice) existingBatch.sellingPrice = sPrice;
+                             if (item.purchasePrice !== undefined) existingBatch.purchasePrice = item.purchasePrice || item.baseRate || 0;
+                             if (item.sellingPrice !== undefined) existingBatch.sellingPrice = item.sellingPrice || item.mrp || 0;
                              await existingBatch.save();
                          } else {
                              await Batch.create({
@@ -220,8 +234,8 @@ const createPurchase = async (req, res) => {
                                  expiryDate: item.expiryDate && !isNaN(new Date(item.expiryDate).getTime()) ? new Date(item.expiryDate) : undefined,
                                  manufacturingDate: item.mfgDate && !isNaN(new Date(item.mfgDate).getTime()) ? new Date(item.mfgDate) : undefined,
                                  quantity: totalQtyInUnits,
-                                 purchasePrice: pPrice || 0,
-                                 sellingPrice: sPrice || 0,
+                                 purchasePrice: item.purchasePrice || item.baseRate || 0,
+                                 sellingPrice: item.sellingPrice || item.mrp || 0,
                                  mrp: item.mrp || 0,
                                  grnId: createdPurchase._id,
                                  shopId: req.shop._id,
@@ -441,17 +455,32 @@ const processPutAway = async (req, res) => {
 
                  product.quantity = (product.quantity || 0) + totalQtyInUnits;
                  
-                 // Update pricing, location and SKU details
-                 const pPrice = item.purchasePrice || item.baseRate;
-                 if (pPrice) product.purchasePrice = pPrice;
-                 
-                 const sPrice = item.sellingPrice || item.mrp;
-                 if (sPrice) product.sellingPrice = sPrice;
-                 
-                 if (item.mrp) product.mrp = item.mrp;
-                 if (item.rack) product.rackLocation = item.rack;
-                 if (item.hsnCode) product.hsnCode = item.hsnCode;
-                 if (item.pack) product.packing = item.pack;
+                  // Update pricing, location and SKU details
+                  if (item.purchasePrice !== undefined) product.purchasePrice = item.purchasePrice || item.baseRate || 0;
+                  if (item.sellingPrice !== undefined) product.sellingPrice = item.sellingPrice || item.mrp || 0;
+                  if (item.mrp !== undefined) product.mrp = item.mrp;
+                  if (item.rack !== undefined) product.rackLocation = item.rack;
+                  if (item.hsnCode !== undefined) product.hsnCode = item.hsnCode;
+                  if (item.pack !== undefined) product.packing = item.pack;
+                  
+                  // Detailed GRN Field Sync
+                  product.supplierSkuId = item.supplierSkuId || product.sku || '';
+                  product.sku = item.skuId || product.sku || '';
+                  product.orderedQty = item.orderedQty ?? 0;
+                  product.receivedQty = item.receivedQty ?? 0;
+                  product.physicalFree = item.physicalFreeQty ?? item.physicalFree ?? 0;
+                  product.schemeFree = item.schemeFreeQty ?? item.schemeFree ?? 0;
+                  product.poRate = item.poRate ?? 0;
+                  product.ptr = item.ptr ?? 0;
+                  product.baseRate = item.baseRate ?? 0;
+                  product.schemeDisc = item.schemeDiscount ?? item.schemeDisc ?? 0;
+                  product.discountPercent = item.discountPercent ?? 0;
+                  product.amount = item.amount ?? 0;
+                  product.cgst = item.cgst ?? 0;
+                  product.sgst = item.sgst ?? 0;
+                  product.igst = item.igst ?? 0;
+                  product.margin = item.margin ?? 0;
+
 
                  const totalTax = (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0);
                  if (totalTax > 0) product.tax = totalTax;
@@ -472,8 +501,8 @@ const processPutAway = async (req, res) => {
                          if (item.expiryDate && !isNaN(new Date(item.expiryDate).getTime())) existingBatch.expiryDate = new Date(item.expiryDate);
                          if (item.mfgDate && !isNaN(new Date(item.mfgDate).getTime())) existingBatch.manufacturingDate = new Date(item.mfgDate);
                          if (item.mrp) existingBatch.mrp = item.mrp;
-                         if (pPrice) existingBatch.purchasePrice = pPrice;
-                         if (sPrice) existingBatch.sellingPrice = sPrice;
+                         if (item.purchasePrice !== undefined) existingBatch.purchasePrice = item.purchasePrice || item.baseRate || 0;
+                         if (item.sellingPrice !== undefined) existingBatch.sellingPrice = item.sellingPrice || item.mrp || 0;
                          if (item.rack) existingBatch.rackLocation = item.rack;
                          await existingBatch.save();
                      } else {
@@ -483,15 +512,15 @@ const processPutAway = async (req, res) => {
                              expiryDate: item.expiryDate && !isNaN(new Date(item.expiryDate).getTime()) ? new Date(item.expiryDate) : undefined,
                              manufacturingDate: item.mfgDate && !isNaN(new Date(item.mfgDate).getTime()) ? new Date(item.mfgDate) : undefined,
                              quantity: totalQtyInUnits,
-                             purchasePrice: pPrice || 0,
-                             sellingPrice: sPrice || 0,
+                             purchasePrice: item.purchasePrice || item.baseRate || 0,
+                             sellingPrice: item.sellingPrice || item.mrp || 0,
                              mrp: item.mrp || 0,
                              rackLocation: item.rack || '',
                              grnId: purchase._id,
                              shopId: purchase.shopId,
                              status: 'Active'
                          });
-                     }
+                      }
                      await InventoryLog.create({
                          type: 'IN',
                          reason: `Put Away (${purchase.invoiceNumber})`,

@@ -34,6 +34,23 @@ const productSchema = new mongoose.Schema(
     manufacturer: { type: String },
     batchNo: { type: String },
     discountPercent: { type: Number, default: 0 },
+    
+    // GRN Detailed Data
+    supplierSkuId: { type: String },
+    orderedQty: { type: Number, default: 0 },
+    receivedQty: { type: Number, default: 0 },
+    physicalFree: { type: Number, default: 0 },
+    schemeFree: { type: Number, default: 0 },
+    poRate: { type: Number, default: 0 },
+    ptr: { type: Number, default: 0 },
+    baseRate: { type: Number, default: 0 },
+    schemeDisc: { type: Number, default: 0 },
+    amount: { type: Number, default: 0 },
+    cgst: { type: Number, default: 0 },
+    sgst: { type: Number, default: 0 },
+    igst: { type: Number, default: 0 },
+    margin: { type: Number, default: 0 },
+
     sizes: [{ type: String }],
     colors: [{ type: String }],
     addOns: [{
