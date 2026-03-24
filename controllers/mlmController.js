@@ -168,8 +168,101 @@ const requestWithdrawal = async (req, res) => {
     }
 };
 
+const distributeCommission = async (orderId) => {
+    try {
+        const Order = require('../models/Order');
+        const order = await Order.findById(orderId).populate('userId');
+        if (!order || order.status !== 'delivered' || order.commissionDistributed) return;
+
+        let totalMargin = 0;
+        for (const item of order.items) {
+            // Price at which user bought
+            const sellingPrice = item.productPrice;
+            // Best estimate of purchase price
+            const purchasePrice = item.purchasePrice || 0;
+            totalMargin += (sellingPrice - purchasePrice) * item.quantity;
+        }
+
+        if (totalMargin <= 0) {
+            order.commissionDistributed = true;
+            await order.save();
+            return;
+        }
+
+        const unitValue = totalMargin / 27;
+
+        // 1. Purchaser Share (6 Units)
+        const purchaserShare = unitValue * 6;
+        if (purchaserShare > 0) {
+            const user = await User.findById(order.userId);
+            if (user) {
+                user.walletBalance += purchaserShare;
+                user.totalEarnings += purchaserShare;
+                await user.save();
+                await Commission.create({
+                    userId: user._id,
+                    fromUserId: user._id,
+                    orderId: order._id,
+                    amount: purchaserShare,
+                    level: 0, // 0 for self cashback
+                    description: `Self Cashback (Order #${order.orderNumber})`,
+                    status: 'credited'
+                });
+            }
+        }
+
+        // 2. Referrer L1 Share (4 Units)
+        if (order.userId.referredBy) {
+            const l1Referrer = await User.findById(order.userId.referredBy);
+            if (l1Referrer) {
+                const l1Share = unitValue * 4;
+                l1Referrer.walletBalance += l1Share;
+                l1Referrer.totalEarnings += l1Share;
+                await l1Referrer.save();
+                await Commission.create({
+                    userId: l1Referrer._id,
+                    fromUserId: order.userId._id,
+                    orderId: order._id,
+                    amount: l1Share,
+                    level: 1,
+                    description: `Referral Level 1 earning (Order #${order.orderNumber})`,
+                    status: 'credited'
+                });
+
+                // 3. Referrer L2 Share (2 Units)
+                if (l1Referrer.referredBy) {
+                    const l2Referrer = await User.findById(l1Referrer.referredBy);
+                    if (l2Referrer) {
+                        const l2Share = unitValue * 2;
+                        l2Referrer.walletBalance += l2Share;
+                        l2Referrer.totalEarnings += l2Share;
+                        await l2Referrer.save();
+                        await Commission.create({
+                            userId: l2Referrer._id,
+                            fromUserId: order.userId._id,
+                            orderId: order._id,
+                            amount: l2Share,
+                            level: 2,
+                            description: `Referral Level 2 earning (Order #${order.orderNumber})`,
+                            status: 'credited'
+                        });
+                    }
+                }
+            }
+        }
+
+        order.commissionDistributed = true;
+        await order.save();
+        console.log(`Commission distributed for Order #${order.orderNumber}`);
+
+    } catch (error) {
+        console.error("Commission Error:", error);
+    }
+};
+
 module.exports = {
     getMLMStats,
     getReferrals,
-    requestWithdrawal
+    requestWithdrawal,
+    distributeCommission
 };

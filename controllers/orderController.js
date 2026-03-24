@@ -7,6 +7,7 @@ const PrescriptionRequest = require('../models/PrescriptionRequest');
 const Prescription = require('../models/Prescription');
 const Offer = require('../models/Offer');
 const { uploadToCloudinary } = require('../utils/cloudinary');
+const { distributeCommission } = require('./mlmController');
 const fs = require('fs');
 
 // ==========================================
@@ -166,6 +167,7 @@ const placeOrder = async (req, res) => {
                 product: product._id,
                 productName: product.name,
                 productPrice: price,
+                purchasePrice: product.purchasePrice || 0, // Lock current purchase price
                 quantity: item.quantity,
                 supplierSkuId: product.sku || product.skuId || product.SKU || product.barcode || '',
                 skuId: product.sku || product.skuId || product.SKU || product.barcode || '',
@@ -413,6 +415,12 @@ const updateOrderStatus = async (req, res) => {
         }
 
         await order.save();
+        
+        // Trigger Commission Distribution if status is delivered
+        if (status === 'delivered') {
+            await distributeCommission(order._id);
+        }
+
         res.json({ success: true, message: 'Order updated successfully', order });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -532,6 +540,14 @@ const bulkUpdateOrderStatus = async (req, res) => {
         if (trackingUrl) updateData.trackingUrl = trackingUrl;
         if (expectedHandover) updateData.expectedHandover = expectedHandover;
         const result = await Order.updateMany({ _id: { $in: orderIds } }, { $set: updateData });
+        
+        // Trigger Commission Distribution for each delivered order
+        if (status === 'delivered') {
+            for (const orderId of orderIds) {
+                await distributeCommission(orderId);
+            }
+        }
+
         res.json({ success: true, message: `${result.modifiedCount} orders updated successfully`, count: result.modifiedCount });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -824,7 +840,13 @@ const requestPrescription = async (req, res) => {
             if (!firstShopId) firstShopId = product.shopId;
             const price = product.sellingPrice;
             subtotal += price * item.quantity;
-            orderItems.push({ product: product._id, productName: product.name, productPrice: price, quantity: item.quantity });
+            orderItems.push({ 
+                product: product._id, 
+                productName: product.name, 
+                productPrice: price, 
+                purchasePrice: product.purchasePrice || 0, // Store for margin
+                quantity: item.quantity 
+            });
             if (product.isPrescriptionRequired === true || product.isPrescriptionRequired === 'true') {
                 productsRequiringPrescription.push(product.name);
             }

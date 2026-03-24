@@ -9,8 +9,10 @@ const orderItemSchema = new mongoose.Schema(
     size: { type: String },
     color: { type: String },
     addOnName: { type: String },
+    purchasePrice: { type: Number, default: 0 }, // Added for margin calculation
     batchId: { type: mongoose.Schema.Types.ObjectId, ref: "Batch" },
     batchNumber: { type: String },
+
   },
   { _id: false }
 );
@@ -86,7 +88,8 @@ const orderSchema = new mongoose.Schema(
     trackingId: { type: String }, // Added
     trackingUrl: { type: String }, // Added
     dispatchProof: { type: String }, // Added for scan confirmation
-    pickerName: { type: String } // Added for Picking Workflow
+    pickerName: { type: String }, // Added for Picking Workflow
+    commissionDistributed: { type: Boolean, default: false } // Track if margin split is already done
   },
   { timestamps: true }
 );

@@ -987,7 +987,8 @@ module.exports = {
                 createdAt: cust.createdAt,
                 source: 'Inventory Panel',
                 shopName: cust.shopId?.shopName || 'N/A',
-                type: 'Offline'
+                type: 'Offline',
+                walletBalance: 0
             }));
  
             const usersFormatted = allUsers.map(u => ({
